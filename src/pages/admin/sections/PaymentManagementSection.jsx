@@ -1,27 +1,234 @@
-import React, { useState } from 'react';
-import { CreditCard, TrendingUp, Clock, XCircle, Search, Calendar } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  CreditCard, TrendingUp, Clock, XCircle, Search,
+  AlertCircle, Loader2, ChevronLeft, ChevronRight,
+  RefreshCw, CheckCircle, IndianRupee, Package, Coins, Copy, Check,
+} from 'lucide-react';
+import api from '../../../services/api';
 
-const STATS = [
-  { label: 'Total Revenue', value: '₹0', icon: TrendingUp, color: 'bg-neutral-900 text-white' },
-  { label: "Today's Revenue", value: '₹0', icon: CreditCard, color: 'bg-green-50 text-green-800 border border-green-200' },
-  { label: 'Pending', value: '0', icon: Clock, color: 'bg-amber-50 text-amber-800 border border-amber-200' },
-  { label: 'Failed', value: '0', icon: XCircle, color: 'bg-red-50 text-red-800 border border-red-200' },
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+const fmtDate = (d) =>
+  d ? new Date(d).toLocaleString('en-IN', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }) : '—';
+
+const fmtAmount = (n) =>
+  n == null ? '—' : `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// ─── constants ────────────────────────────────────────────────────────────────
+
+const STATUS_STYLES = {
+  success:   'bg-green-100  text-green-700  border-green-200',
+  pending:   'bg-amber-100  text-amber-700  border-amber-200',
+  failed:    'bg-red-100    text-red-700    border-red-200',
+  refunded:  'bg-blue-100   text-blue-700   border-blue-200',
+  cancelled: 'bg-neutral-100 text-neutral-600 border-neutral-200',
+};
+
+const STATUS_FILTERS = [
+  { value: '',          label: 'All'       },
+  { value: 'success',   label: 'Success'   },
+  { value: 'pending',   label: 'Pending'   },
+  { value: 'failed',    label: 'Failed'    },
+  { value: 'refunded',  label: 'Refunded'  },
+  { value: 'cancelled', label: 'Cancelled' },
 ];
 
-const TABLE_HEADERS = ['User', 'Amount', 'Method', 'Status', 'Transaction ID', 'Date'];
+const VALID_STATUSES = new Set(STATUS_FILTERS.map((s) => s.value));
 
-const RANGES = ['Today', '7 Days', '30 Days', 'All'];
+// ─── sub-components ───────────────────────────────────────────────────────────
+
+const StatusBadge = ({ status }) => {
+  const s = (status || '').toLowerCase();
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${STATUS_STYLES[s] || STATUS_STYLES.cancelled}`}>
+      {s || '—'}
+    </span>
+  );
+};
+
+const CopyChip = ({ value, display }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+  return (
+    <button onClick={copy} className="group flex items-center gap-1 font-mono text-[11px] text-neutral-400 hover:text-neutral-700">
+      {display}
+      {copied
+        ? <Check size={10} className="text-green-500" />
+        : <Copy size={10} className="opacity-0 group-hover:opacity-100" />}
+    </button>
+  );
+};
+
+const PaginationBar = ({ page, pages, total, limit, onPage }) => {
+  if (pages <= 1) return null;
+  const start = (page - 1) * limit + 1;
+  const end   = Math.min(page * limit, total);
+
+  const pageNums = () => {
+    if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
+    if (page <= 3)  return [1, 2, 3, 4, 5];
+    if (page >= pages - 2) return [pages - 4, pages - 3, pages - 2, pages - 1, pages];
+    return [page - 2, page - 1, page, page + 1, page + 2];
+  };
+
+  return (
+    <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 sm:px-6">
+      <p className="text-xs text-neutral-400">{start}–{end} of {total}</p>
+      <div className="flex items-center gap-1">
+        <button onClick={() => onPage(page - 1)} disabled={page <= 1}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-40">
+          <ChevronLeft size={14} />
+        </button>
+        {pageNums().map((n) => (
+          <button key={n} onClick={() => onPage(n)}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium ${
+              n === page ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+            }`}>
+            {n}
+          </button>
+        ))}
+        <button onClick={() => onPage(page + 1)} disabled={page >= pages}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-40">
+          <ChevronRight size={14} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ─── main section ─────────────────────────────────────────────────────────────
 
 const PaymentManagementSection = () => {
-  const [range, setRange] = useState('All');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const rawStatus   = searchParams.get('pstatus') || '';
+  const activeStatus = VALID_STATUSES.has(rawStatus) ? rawStatus : '';
+
+  const setActiveStatus = useCallback((s) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (s) p.set('pstatus', s); else p.delete('pstatus');
+      return p;
+    }, { replace: true });
+    setPage(1);
+  }, [setSearchParams]);
+
+  const [purchases,  setPurchases]  = useState([]);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 0 });
+  const [stats,      setStats]      = useState({ total: 0, successCount: 0, pendingCount: 0, failedCount: 0, revenue: 0 });
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState(null);
+
+  const [page,   setPage]   = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  const debounceRef = useRef(null);
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 450);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  const fetchPurchases = useCallback(async (targetPage = 1) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = { page: targetPage, limit: 20 };
+      if (activeStatus)    params.status = activeStatus;
+      if (debouncedSearch) params.userId  = debouncedSearch;
+
+      const { data } = await api.get('/api/purchase/admin/all', { params });
+
+      // Response shape: { success, data: [...], pagination: {...} }
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      const pg   = data?.pagination ?? {};
+
+      setPurchases(rows);
+      setPagination({
+        total: pg.total  ?? rows.length,
+        page:  pg.page   ?? targetPage,
+        limit: pg.limit  ?? 20,
+        pages: pg.pages  ?? Math.ceil((pg.total ?? rows.length) / 20),
+      });
+
+      // Derive stats from current page rows
+      const successRows = rows.filter((r) => r.status === 'success');
+      const pendingRows = rows.filter((r) => r.status === 'pending');
+      const failedRows  = rows.filter((r) => r.status === 'failed');
+      const revenue     = successRows.reduce((sum, r) => sum + (r.amount ?? 0), 0);
+      setStats({
+        total:        pg.total  ?? rows.length,
+        successCount: successRows.length,
+        pendingCount: pendingRows.length,
+        failedCount:  failedRows.length,
+        revenue,
+      });
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to load purchases');
+    } finally {
+      setLoading(false);
+    }
+  }, [activeStatus, debouncedSearch]);
+
+  useEffect(() => {
+    fetchPurchases(page);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchPurchases]);
+
+  const onPage = (n) => {
+    setPage(n);
+    fetchPurchases(n);
+  };
+
+  // ─── render ─────────────────────────────────────────────────────────────────
+
+  const STAT_CARDS = [
+    {
+      label: 'Page Revenue',
+      value: fmtAmount(stats.revenue),
+      Icon: IndianRupee,
+      cls: 'bg-neutral-900 text-white',
+    },
+    {
+      label: 'Successful',
+      value: stats.successCount,
+      Icon: CheckCircle,
+      cls: 'bg-green-50 text-green-800 border border-green-200',
+    },
+    {
+      label: 'Pending',
+      value: stats.pendingCount,
+      Icon: Clock,
+      cls: 'bg-amber-50 text-amber-800 border border-amber-200',
+    },
+    {
+      label: 'Failed',
+      value: stats.failedCount,
+      Icon: XCircle,
+      cls: 'bg-red-50 text-red-800 border border-red-200',
+    },
+  ];
 
   return (
     <div className="space-y-4 sm:space-y-6">
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {STATS.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${color}`}>
+        {STAT_CARDS.map(({ label, value, Icon, cls }) => (
+          <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${cls}`}>
             <div className="flex items-start justify-between">
               <p className="text-2xl font-black sm:text-3xl">{value}</p>
               <Icon size={18} className="opacity-50" />
@@ -33,56 +240,193 @@ const PaymentManagementSection = () => {
 
       {/* Table card */}
       <div className="rounded-2xl border border-neutral-200 bg-white">
+
         {/* Toolbar */}
         <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <div className="relative flex-1 sm:max-w-xs">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
-              placeholder="Search transactions…"
+              placeholder="Filter by user ID…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Calendar size={15} className="text-neutral-400" />
-            {RANGES.map((r) => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {STATUS_FILTERS.map(({ value, label }) => (
+              <button key={value} onClick={() => setActiveStatus(value)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  range === r ? 'bg-black text-white' : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
-                }`}
-              >
-                {r}
+                  activeStatus === value
+                    ? 'bg-neutral-900 text-white'
+                    : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
+                }`}>
+                {label}
               </button>
             ))}
+            <button
+              onClick={() => fetchPurchases(page)}
+              disabled={loading}
+              title="Refresh"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-40"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
 
+        {/* Error */}
+        {error && (
+          <div className="flex items-center justify-between gap-3 border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:px-6">
+            <span className="flex items-center gap-2"><AlertCircle size={14} />{error}</span>
+            <button onClick={() => fetchPurchases(page)}
+              className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-red-50">
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px]">
+          <table className="w-full min-w-[700px]">
             <thead>
               <tr className="border-b border-neutral-100">
-                {TABLE_HEADERS.map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-6">
-                    {h}
+                {[
+                  { label: 'User ID',     cls: '' },
+                  { label: 'Package',     cls: '' },
+                  { label: 'Coins',       cls: '' },
+                  { label: 'Amount',      cls: '' },
+                  { label: 'Status',      cls: '' },
+                  { label: 'Order ID',    cls: 'hidden lg:table-cell' },
+                  { label: 'Payment ID',  cls: 'hidden xl:table-cell' },
+                  { label: 'Date',        cls: 'hidden md:table-cell' },
+                ].map(({ label, cls }) => (
+                  <th key={label} className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5 ${cls}`}>
+                    {label}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td colSpan={TABLE_HEADERS.length} className="py-20 text-center">
-                  <CreditCard size={36} className="mx-auto mb-3 text-neutral-200" />
-                  <p className="text-sm font-medium text-neutral-400">No transactions yet</p>
-                  <p className="mt-1 text-xs text-neutral-300">Payment records will appear here once the API is connected</p>
-                </td>
-              </tr>
+
+            <tbody className="divide-y divide-neutral-50">
+              {loading && purchases.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-20 text-center">
+                    <Loader2 size={24} className="mx-auto animate-spin text-neutral-300" />
+                    <p className="mt-3 text-sm text-neutral-400">Loading purchases…</p>
+                  </td>
+                </tr>
+              ) : purchases.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-20 text-center">
+                    <CreditCard size={36} className="mx-auto mb-3 text-neutral-200" />
+                    <p className="text-sm font-medium text-neutral-400">No purchases found</p>
+                    <p className="mt-1 text-xs text-neutral-300">
+                      {activeStatus || debouncedSearch
+                        ? 'Try clearing the filters'
+                        : 'Purchase records will appear here'}
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                purchases.map((p) => {
+                  const pkg      = p.packageId ?? {};
+                  const orderId  = p.cashfree?.orderId ?? '—';
+                  const paymentId = p.cashfree?.paymentId ?? null;
+
+                  return (
+                    <tr key={p._id} className="group hover:bg-neutral-50/70 transition-colors">
+
+                      {/* User ID */}
+                      <td className="px-4 py-3 sm:px-5">
+                        <div className="space-y-0.5">
+                          <CopyChip value={p.userId} display={`#${String(p.userId).slice(-10)}`} />
+                          <p className="text-[10px] text-neutral-300 font-mono">{p._id.slice(-8)}</p>
+                        </div>
+                      </td>
+
+                      {/* Package */}
+                      <td className="px-4 py-3 sm:px-5">
+                        <div className="flex items-start gap-1.5">
+                          <Package size={13} className="mt-0.5 flex-shrink-0 text-neutral-400" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-neutral-800">
+                              {p.title ?? pkg.title ?? '—'}
+                            </p>
+                            {p.subtitle && (
+                              <p className="text-[10px] text-neutral-400">{p.subtitle}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Coins */}
+                      <td className="px-4 py-3 sm:px-5">
+                        <div className="flex items-center gap-1 text-sm font-semibold text-amber-600">
+                          <Coins size={13} />
+                          {(p.coins ?? pkg.coins ?? '—').toLocaleString()}
+                        </div>
+                      </td>
+
+                      {/* Amount */}
+                      <td className="px-4 py-3 sm:px-5">
+                        <span className="text-sm font-bold text-neutral-800">
+                          {fmtAmount(p.amount)}
+                        </span>
+                        {p.currency && (
+                          <span className="ml-1 text-[10px] text-neutral-400">{p.currency}</span>
+                        )}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-3 sm:px-5">
+                        <StatusBadge status={p.status} />
+                      </td>
+
+                      {/* Order ID */}
+                      <td className="hidden px-4 py-3 lg:table-cell sm:px-5">
+                        <CopyChip value={orderId} display={orderId.length > 32 ? `…${orderId.slice(-20)}` : orderId} />
+                      </td>
+
+                      {/* Payment ID */}
+                      <td className="hidden px-4 py-3 xl:table-cell sm:px-5">
+                        {paymentId
+                          ? <CopyChip value={paymentId} display={paymentId} />
+                          : <span className="text-xs text-neutral-300">—</span>}
+                      </td>
+
+                      {/* Date */}
+                      <td className="hidden px-4 py-3 text-xs text-neutral-400 md:table-cell sm:px-5">
+                        {fmtDate(p.createdAt)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <PaginationBar
+          page={pagination.page}
+          pages={pagination.pages}
+          total={pagination.total}
+          limit={pagination.limit}
+          onPage={onPage}
+        />
+
+        {/* Footer note */}
+        {!loading && purchases.length > 0 && (
+          <div className="border-t border-neutral-50 px-4 py-2 sm:px-5">
+            <p className="text-xs text-neutral-300">
+              {purchases.length} records on this page · {pagination.total} total
+              {activeStatus && ` · status: ${activeStatus}`}
+              {debouncedSearch && ` · user: ${debouncedSearch}`}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

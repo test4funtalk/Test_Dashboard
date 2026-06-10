@@ -1,0 +1,1000 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  PhoneCall, Phone, Video, Search, RefreshCw, AlertCircle,
+  Loader2, ChevronLeft, ChevronRight, Clock, Coins, Gift,
+  Settings, Plus, Pencil, Trash2, X, CheckCircle, Save,
+} from 'lucide-react';
+import AvatarDisplay from '../../../components/ui/AvatarDisplay';
+import api from '../../../services/api';
+import CallDetailModal from './CallDetailModal';
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+const fmtDateTime = (d) =>
+  d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+const fmtDuration = (secs) => {
+  if (secs == null || secs < 0) return '—';
+  if (secs === 0) return '0s';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
+const CALL_STATUS_STYLES = {
+  ended:     'bg-neutral-100 text-neutral-600',
+  missed:    'bg-red-100 text-red-600',
+  rejected:  'bg-red-100 text-red-600',
+  cancelled: 'bg-orange-100 text-orange-600',
+  ongoing:   'bg-blue-100 text-blue-600',
+  ringing:   'bg-amber-100 text-amber-700',
+};
+
+const STATUS_OPTIONS = [
+  { value: '',           label: 'All Statuses' },
+  { value: 'ended',      label: 'Ended'        },
+  { value: 'missed',     label: 'Missed'       },
+  { value: 'rejected',   label: 'Rejected'     },
+  { value: 'cancelled',  label: 'Cancelled'    },
+  { value: 'ongoing',    label: 'Ongoing'      },
+  { value: 'ringing',    label: 'Ringing'      },
+];
+
+const TYPE_OPTIONS = [
+  { value: '',      label: 'All Types' },
+  { value: 'voice', label: 'Voice'     },
+  { value: 'video', label: 'Video'     },
+];
+
+const SECTION_TABS = [
+  { id: 'calls',  label: 'Calls',       Icon: PhoneCall },
+  { id: 'config', label: 'Call Config', Icon: Settings  },
+  { id: 'gifts',  label: 'Gift Config', Icon: Gift      },
+];
+
+// ─── calls tab ────────────────────────────────────────────────────────────────
+
+const CallsTab = () => {
+  const [calls, setCalls]     = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+
+  const [search, setSearch]      = useState('');
+  const [debouncedSearch, setDs] = useState('');
+  const [status, setStatus]      = useState('');
+  const [callType, setCallType]  = useState('');
+
+  const [page, setPage]   = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const [activeCallId, setActiveCallId] = useState(null);
+
+  const fetchCalls = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/api/admin/calls', {
+        params: {
+          page, limit: 15,
+          ...(debouncedSearch && { search: debouncedSearch }),
+          ...(status   && { status }),
+          ...(callType && { callType }),
+        },
+      });
+      const list       = Array.isArray(data?.data) ? data.data : [];
+      const pagination = data?.pagination ?? {};
+      setCalls(list);
+      setPages(pagination.pages ?? 1);
+      setTotal(pagination.total ?? list.length);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load calls');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, debouncedSearch, status, callType]);
+
+  useEffect(() => { fetchCalls(); }, [fetchCalls]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setDs(search.trim()); setPage(1); }, 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const onFilterChange = (setter) => (e) => { setter(e.target.value); setPage(1); };
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-2xl font-black sm:text-3xl">{total}</p>
+            <PhoneCall size={17} className="opacity-50" />
+          </div>
+          <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">Total Calls</p>
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-2xl font-black sm:text-3xl">{calls.length}</p>
+            <Search size={17} className="opacity-30" />
+          </div>
+          <p className="mt-0.5 text-xs font-medium text-neutral-500 sm:mt-1">Showing</p>
+        </div>
+      </div>
+
+      {/* Main card */}
+      <div className="rounded-2xl border border-neutral-200 bg-white">
+
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Search by username or phone…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={status}
+              onChange={onFilterChange(setStatus)}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+            >
+              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <select
+              value={callType}
+              onChange={onFilterChange(setCallType)}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+            >
+              {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <button
+              onClick={fetchCalls}
+              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 border-b border-neutral-100 bg-red-50 px-6 py-3 text-sm text-red-600">
+            <AlertCircle size={15} /> {error}
+          </div>
+        )}
+
+        {/* List */}
+        <div className="p-4 sm:p-6">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+              <Loader2 size={20} className="animate-spin" /> Loading calls…
+            </div>
+          ) : calls.length === 0 ? (
+            <div className="py-16 text-center">
+              <PhoneCall size={36} className="mx-auto mb-3 text-neutral-200" />
+              <p className="text-sm font-medium text-neutral-400">
+                {search || status || callType ? 'No calls match your filters' : 'No calls yet'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {calls.map((call) => {
+                const TypeIcon = call.callType === 'video' ? Video : Phone;
+                return (
+                  <button
+                    key={call._id}
+                    onClick={() => setActiveCallId(call._id)}
+                    className="flex w-full flex-col gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 text-left transition hover:border-neutral-200 hover:bg-white sm:flex-row sm:items-center sm:justify-between sm:px-4"
+                  >
+                    <div className="flex flex-1 items-center gap-4 min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <AvatarDisplay src={call.callerId?.avatar} name={call.callerId?.username} size="sm" />
+                        <span className="truncate text-sm font-medium">{call.callerId?.username || '—'}</span>
+                      </div>
+                      <span className="flex-shrink-0 text-neutral-300">→</span>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <AvatarDisplay src={call.hostId?.avatar} name={call.hostId?.username} size="sm" />
+                        <span className="truncate text-sm font-medium">{call.hostId?.username || '—'}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0 sm:justify-end">
+                      <span className="flex items-center gap-1 text-xs text-neutral-500">
+                        <TypeIcon size={11} /> <span className="capitalize">{call.callType}</span>
+                      </span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
+                        {call.status}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-neutral-500">
+                        <Clock size={11} /> {fmtDuration(call.duration)}
+                      </span>
+                      {!!call.billing?.totalCoinsDeducted && (
+                        <span className="flex items-center gap-1 text-xs text-neutral-500">
+                          <Coins size={11} /> {call.billing.totalCoinsDeducted}
+                        </span>
+                      )}
+                      {!!call.gifts?.totalGiftCoins && (
+                        <span className="flex items-center gap-1 text-xs text-neutral-500">
+                          <Gift size={11} /> {call.gifts.totalGiftCoins}
+                        </span>
+                      )}
+                      <span className="text-xs text-neutral-400">{fmtDateTime(call.createdAt)}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {!loading && calls.length > 0 && pages > 1 && (
+          <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 sm:px-6">
+            <p className="text-xs text-neutral-400">{total} total · page {page} of {pages}</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronLeft size={14} />
+              </button>
+              <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {activeCallId && <CallDetailModal callId={activeCallId} onClose={() => setActiveCallId(null)} />}
+    </div>
+  );
+};
+
+// ─── call config tab ──────────────────────────────────────────────────────────
+
+const CONFIG_FIELDS = [
+  {
+    key: 'coinsPerSecond',
+    label: 'Coins / Second',
+    desc: 'Coins deducted from user per second of active call',
+    unit: 'coins',
+  },
+  {
+    key: 'cashPerSecond',
+    label: 'Cash / Second',
+    desc: 'Cash (₹) credited to host per second of active call',
+    unit: '₹',
+  },
+  {
+    key: 'minimumCallCoins',
+    label: 'Minimum Call Coins',
+    desc: 'User must hold at least this many coins to initiate a call',
+    unit: 'coins',
+  },
+  {
+    key: 'lowBalanceWarningSeconds',
+    label: 'Low Balance Warning',
+    desc: "Warn when user coins last fewer than N seconds",
+    unit: 'sec',
+  },
+];
+
+const EMPTY_CONFIG = {
+  coinsPerSecond: '', cashPerSecond: '',
+  minimumCallCoins: '', lowBalanceWarningSeconds: '',
+};
+
+const applyConfig = (cfg, setConfig, setForm) => {
+  setConfig(cfg);
+  setForm({
+    coinsPerSecond:           cfg.coinsPerSecond           ?? '',
+    cashPerSecond:            cfg.cashPerSecond            ?? '',
+    minimumCallCoins:         cfg.minimumCallCoins         ?? '',
+    lowBalanceWarningSeconds: cfg.lowBalanceWarningSeconds ?? '',
+  });
+};
+
+const CallConfigTab = () => {
+  const [config, setConfig]   = useState(null);
+  const [form, setForm]       = useState(EMPTY_CONFIG);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState(null);
+  const [saved, setSaved]     = useState(false);
+
+  const loadConfig = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/api/admin/call-config');
+      const cfg = data?.data ?? data ?? {};
+      applyConfig(cfg, setConfig, setForm);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to load config');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadConfig(); }, [loadConfig]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const body = {};
+      CONFIG_FIELDS.forEach(({ key }) => {
+        const v = form[key];
+        if (v !== '' && v != null) body[key] = Number(v);
+      });
+      const { data } = await api.put('/api/admin/call-config', body);
+      const updated = data?.data ?? data ?? {};
+      applyConfig(updated, setConfig, setForm);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3500);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to save config');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white">
+      {/* Header */}
+      <div className="border-b border-neutral-100 px-6 py-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-900">
+              <Settings size={16} className="text-white" />
+            </div>
+            <div>
+              <p className="font-semibold text-neutral-900">Billing Configuration</p>
+              <p className="text-xs text-neutral-400">Changes apply to new calls after ~5 min cache TTL</p>
+            </div>
+          </div>
+          <button
+            onClick={loadConfig}
+            disabled={loading}
+            title="Refresh config"
+            className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {loading && !config ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+          <Loader2 size={20} className="animate-spin" /> Loading configuration…
+        </div>
+      ) : (
+        <div className="p-6 space-y-6">
+
+          {/* Fields grid */}
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {CONFIG_FIELDS.map(({ key, label, desc, unit }) => (
+              <div key={key} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">
+                  {label}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={form[key] ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium outline-none focus:border-neutral-400"
+                  />
+                  <span className="flex-shrink-0 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs font-medium text-neutral-500">
+                    {unit}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-neutral-400">{desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Current live values summary */}
+          {config && (
+            <div className="rounded-xl border border-neutral-200 bg-white p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">Live Values</p>
+              <div className="flex flex-wrap gap-2">
+                {CONFIG_FIELDS.map(({ key, label, unit }) => (
+                  <span key={key} className="rounded-full border border-neutral-100 bg-neutral-50 px-3 py-1 text-xs text-neutral-600">
+                    <span className="font-medium">{label}:</span> {config[key] ?? '—'} {unit}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-neutral-400">
+                Last saved: {fmtDateTime(config.updatedAt)}
+              </p>
+            </div>
+          )}
+
+          {/* Feedback */}
+          {error && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <span className="flex items-center gap-2"><AlertCircle size={14} /> {error}</span>
+              <button onClick={loadConfig} className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-red-50">
+                Retry
+              </button>
+            </div>
+          )}
+          {saved && (
+            <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              <CheckCircle size={14} /> Configuration saved and will take effect within 5 minutes.
+            </div>
+          )}
+
+          {/* Save button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── gift config tab ──────────────────────────────────────────────────────────
+
+const GIFT_FILTER_TABS = [
+  { id: 'all',      label: 'All'      },
+  { id: 'active',   label: 'Active'   },
+  { id: 'inactive', label: 'Inactive' },
+];
+
+const GIFT_EMPTY_FORM = { name: '', icon: '', coinCost: '', cashValue: '', sortOrder: '0', isActive: true };
+
+// ─── emoji icon picker ────────────────────────────────────────────────────────
+
+const GIFT_ICONS = [
+  // Hearts & Love
+  '❤️','💕','💖','💗','💓','💞','💝','🥰','😍','💋','💏','💑',
+  // Gifts & Celebration
+  '🎁','🎀','🎊','🎉','🎈','🎆','🎇','🪅','🎠','🎡',
+  // Flowers & Nature
+  '🌹','🌸','🌺','💐','🌼','🌻','🌷','🍀','🌿','🌴','🦋','🐝',
+  // Stars & Magic
+  '⭐','🌟','💫','✨','🌠','🌈','🪄','🔮','💥','⚡',
+  // Crown & Luxury
+  '👑','💎','💍','🏆','🥇','🎖️','🏅','💰','💵','🪙',
+  // Fire & Energy
+  '🔥','💯','🚀','⚡','💪','🦁','🐉','🦄','🦅','🐬',
+  // Music & Art
+  '🎵','🎶','🎸','🎹','🎤','🎭','🎨','🎬','🎧','🎺',
+  // Food & Drinks
+  '🍰','🎂','🍫','🍷','🥂','🍾','🍓','🍒','🍑','🍭',
+  // Fun & Games
+  '🎮','🎯','🎳','🎪','🃏','🎲','🧩','🪁','🛸','🎋',
+  // Misc Cute
+  '🌙','☀️','❄️','🌊','🦩','🐠','🦜','🌺','🪷','🧸',
+];
+
+const ICON_CATEGORIES = [
+  { label: 'Hearts',      icons: GIFT_ICONS.slice(0,  12) },
+  { label: 'Gifts',       icons: GIFT_ICONS.slice(12, 22) },
+  { label: 'Flowers',     icons: GIFT_ICONS.slice(22, 34) },
+  { label: 'Stars',       icons: GIFT_ICONS.slice(34, 44) },
+  { label: 'Luxury',      icons: GIFT_ICONS.slice(44, 54) },
+  { label: 'Energy',      icons: GIFT_ICONS.slice(54, 64) },
+  { label: 'Music',       icons: GIFT_ICONS.slice(64, 74) },
+  { label: 'Food',        icons: GIFT_ICONS.slice(74, 84) },
+  { label: 'Fun',         icons: GIFT_ICONS.slice(84, 94) },
+  { label: 'Misc',        icons: GIFT_ICONS.slice(94)     },
+];
+
+const EmojiPicker = ({ value, onChange }) => {
+  const [open, setOpen]     = useState(false);
+  const [search, setSearch] = useState('');
+  const ref                 = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const allIcons    = GIFT_ICONS;
+  const searchLower = search.trim().toLowerCase();
+  const filtered    = searchLower
+    ? allIcons.filter((_, i) => {
+        const cat = ICON_CATEGORIES.find((c) => c.icons.includes(allIcons[i]));
+        return cat?.label.toLowerCase().includes(searchLower);
+      })
+    : null;
+
+  return (
+    <div ref={ref} className="relative w-20 flex-shrink-0">
+      <label className="block text-xs font-semibold text-neutral-600 mb-1">Icon</label>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`w-full rounded-xl border px-2 py-2.5 text-center text-2xl transition ${
+          open ? 'border-neutral-400' : 'border-neutral-200 hover:border-neutral-300'
+        }`}
+      >
+        {value || <span className="text-neutral-300 text-base">🎁</span>}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-2xl border border-neutral-200 bg-white shadow-xl">
+          {/* Search */}
+          <div className="border-b border-neutral-100 p-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search category…"
+              autoFocus
+              className="w-full rounded-lg border border-neutral-200 px-3 py-1.5 text-xs outline-none focus:border-neutral-400"
+            />
+          </div>
+
+          {/* Icon grid */}
+          <div className="max-h-64 overflow-y-auto p-2 space-y-2">
+            {(filtered ? [{ label: 'Results', icons: filtered }] : ICON_CATEGORIES).map(({ label, icons }) =>
+              icons.length === 0 ? null : (
+                <div key={label}>
+                  <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{label}</p>
+                  <div className="grid grid-cols-8 gap-0.5">
+                    {icons.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => { onChange(emoji); setOpen(false); setSearch(''); }}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg text-lg transition hover:bg-neutral-100 ${
+                          value === emoji ? 'bg-neutral-900 text-white' : ''
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            )}
+            {filtered?.length === 0 && (
+              <p className="py-4 text-center text-xs text-neutral-400">No icons found</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const GiftFormModal = ({ initial, onSave, onClose, saving, error }) => {
+  const isEdit = !!initial?._id;
+  const [form, setForm] = useState(
+    isEdit
+      ? { name: initial.name, icon: initial.icon, coinCost: initial.coinCost, cashValue: initial.cashValue ?? '', sortOrder: initial.sortOrder, isActive: initial.isActive }
+      : GIFT_EMPTY_FORM
+  );
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const body = {
+      name:      form.name.trim(),
+      icon:      form.icon.trim(),
+      coinCost:  Number(form.coinCost),
+      cashValue: Number(form.cashValue),
+      sortOrder: Number(form.sortOrder),
+    };
+    if (isEdit) body.isActive = form.isActive;
+    onSave(body);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="w-full max-w-md rounded-t-3xl border border-neutral-200 bg-white p-6 shadow-2xl sm:rounded-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className="text-base font-bold">{isEdit ? 'Edit Gift Type' : 'Create Gift Type'}</h3>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-neutral-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Icon picker + Name */}
+          <div className="flex gap-3">
+            <EmojiPicker value={form.icon} onChange={(v) => set('icon', v)} />
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-neutral-600 mb-1">Name</label>
+              <input
+                value={form.name}
+                onChange={(e) => set('name', e.target.value)}
+                placeholder="Rose"
+                required
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+          </div>
+
+          {/* Coin cost + Cash value + Sort order */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-600 mb-1">Coin Cost</label>
+              <div className="relative">
+                <Coins size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 pointer-events-none" />
+                <input
+                  type="number" min="1" required
+                  value={form.coinCost}
+                  onChange={(e) => set('coinCost', e.target.value)}
+                  placeholder="50"
+                  className="w-full rounded-xl border border-neutral-200 py-2.5 pl-7 pr-3 text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-600 mb-1">Cash Value (₹)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-green-600 pointer-events-none">₹</span>
+                <input
+                  type="number" min="0" required
+                  value={form.cashValue}
+                  onChange={(e) => set('cashValue', e.target.value)}
+                  placeholder="30"
+                  className="w-full rounded-xl border border-neutral-200 py-2.5 pl-6 pr-3 text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-600 mb-1">Sort Order</label>
+              <input
+                type="number" min="0"
+                value={form.sortOrder}
+                onChange={(e) => set('sortOrder', e.target.value)}
+                placeholder="0"
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+          </div>
+
+          {/* Active toggle (edit only) */}
+          {isEdit && (
+            <div className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-neutral-700">Active</p>
+                <p className="text-xs text-neutral-400">Visible in the gift picker</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => set('isActive', !form.isActive)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.isActive ? 'bg-neutral-900' : 'bg-neutral-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${form.isActive ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <p className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+              <AlertCircle size={12} /> {error}
+            </p>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-900 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50">
+              {saving && <Loader2 size={13} className="animate-spin" />}
+              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Gift'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const GiftConfigTab = () => {
+  const [gifts, setGifts]     = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+  const [filter, setFilter]   = useState('all');
+
+  const [modalMode, setModalMode]   = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+  const [modalError, setModalError] = useState(null);
+  const [saving, setSaving]         = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const loadGifts = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    api.get('/api/admin/gift-types')
+      .then(({ data }) => setGifts(Array.isArray(data?.data) ? data.data : []))
+      .catch((err) => setError(err.response?.data?.message || 'Failed to load gift types'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadGifts(); }, [loadGifts]);
+
+  const total    = gifts.length;
+  const activeCount   = gifts.filter((g) => g.isActive !== false).length;
+  const inactiveCount = gifts.filter((g) => g.isActive === false).length;
+
+  const filtered = filter === 'active'   ? gifts.filter((g) => g.isActive !== false)
+                 : filter === 'inactive' ? gifts.filter((g) => g.isActive === false)
+                 : gifts;
+
+  const openCreate = () => { setEditTarget(null); setModalError(null); setModalMode('create'); };
+  const openEdit   = (g) => { setEditTarget(g);   setModalError(null); setModalMode('edit'); };
+  const closeModal = () => { setModalMode(null); setEditTarget(null); setModalError(null); };
+
+  const handleSave = async (body) => {
+    setSaving(true);
+    setModalError(null);
+    try {
+      if (modalMode === 'create') {
+        const { data } = await api.post('/api/admin/gift-types', body);
+        setGifts((prev) => [...prev, data.data]);
+      } else {
+        const { data } = await api.put(`/api/admin/gift-types/${editTarget._id}`, body);
+        setGifts((prev) => prev.map((g) => g._id === editTarget._id ? (data?.data ?? { ...g, ...body }) : g));
+      }
+      closeModal();
+    } catch (err) {
+      setModalError(err.response?.data?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    setDeletingId(id);
+    try {
+      await api.delete(`/api/admin/gift-types/${id}`);
+      setGifts((prev) => prev.map((g) => g._id === id ? { ...g, isActive: false } : g));
+    } catch {
+      // soft-delete failures are silent; user can retry via reload
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const TABS_WITH_COUNT = GIFT_FILTER_TABS.map((t) => ({
+    ...t,
+    count: t.id === 'all' ? total : t.id === 'active' ? activeCount : inactiveCount,
+  }));
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-2xl font-black sm:text-3xl">{total}</p>
+            <Gift size={17} className="opacity-50" />
+          </div>
+          <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">Total Gifts</p>
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-2xl font-black text-green-700 sm:text-3xl">{activeCount}</p>
+            <CheckCircle size={17} className="text-green-400 opacity-60" />
+          </div>
+          <p className="mt-0.5 text-xs font-medium text-neutral-500 sm:mt-1">Active</p>
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-2xl font-black text-neutral-400 sm:text-3xl">{inactiveCount}</p>
+            <X size={17} className="text-neutral-300" />
+          </div>
+          <p className="mt-0.5 text-xs font-medium text-neutral-500 sm:mt-1">Inactive</p>
+        </div>
+      </div>
+
+      {/* Main card */}
+      <div className="rounded-2xl border border-neutral-200 bg-white">
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+          {/* Filter tabs */}
+          <div className="flex gap-1">
+            {TABS_WITH_COUNT.map(({ id, label, count }) => (
+              <button
+                key={id}
+                onClick={() => setFilter(id)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  filter === id
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800'
+                }`}
+              >
+                {label}
+                <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${filter === id ? 'bg-white/20' : 'bg-neutral-100'}`}>
+                  {count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={loadGifts}
+              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800">
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+            </button>
+            <button onClick={openCreate}
+              className="flex items-center gap-1.5 rounded-xl bg-neutral-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-neutral-700">
+              <Plus size={13} /> New Gift
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 border-b border-neutral-100 bg-red-50 px-6 py-3 text-sm text-red-600">
+            <AlertCircle size={14} /> {error}
+          </div>
+        )}
+
+        {/* Gift grid */}
+        <div className="p-4 sm:p-6">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-neutral-400">
+              <Loader2 size={20} className="animate-spin" /> Loading gift types…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-12 text-center">
+              <Gift size={32} className="mx-auto mb-3 text-neutral-200" />
+              <p className="text-sm font-medium text-neutral-400">
+                {filter !== 'all' ? `No ${filter} gift types` : 'No gift types yet'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {filtered.map((gift) => (
+                <div
+                  key={gift._id}
+                  className={`relative rounded-2xl border p-4 transition ${
+                    gift.isActive !== false
+                      ? 'border-neutral-200 bg-white'
+                      : 'border-neutral-100 bg-neutral-50 opacity-60'
+                  }`}
+                >
+                  {/* Status badge */}
+                  <span className={`absolute right-3 top-3 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    gift.isActive !== false ? 'bg-green-100 text-green-700' : 'bg-neutral-200 text-neutral-500'
+                  }`}>
+                    {gift.isActive !== false ? 'Active' : 'Inactive'}
+                  </span>
+
+                  {/* Icon + Name */}
+                  <div className="mb-3 flex items-center gap-3">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-100 text-2xl">
+                      {gift.icon || '🎁'}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-neutral-900">{gift.name}</p>
+                      <p className="text-xs text-neutral-400">Order: {gift.sortOrder ?? 0}</p>
+                    </div>
+                  </div>
+
+                  {/* Coin cost + Cash value */}
+                  <div className="mb-3 grid grid-cols-2 gap-2">
+                    <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2">
+                      <Coins size={12} className="flex-shrink-0 text-amber-500" />
+                      <span className="text-sm font-bold text-amber-700">{gift.coinCost}</span>
+                      <span className="text-[10px] text-amber-500">coins</span>
+                    </div>
+                    {gift.cashValue != null && (
+                      <div className="flex items-center gap-1 rounded-lg bg-green-50 px-2.5 py-2">
+                        <span className="text-xs font-bold text-green-600">₹</span>
+                        <span className="text-sm font-bold text-green-700">{gift.cashValue}</span>
+                        <span className="text-[10px] text-green-500">cash</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => openEdit(gift)}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-neutral-200 py-1.5 text-xs font-medium text-neutral-600 transition hover:border-neutral-400 hover:bg-neutral-50"
+                    >
+                      <Pencil size={11} /> Edit
+                    </button>
+                    {gift.isActive !== false && (
+                      <button
+                        onClick={() => handleDelete(gift._id)}
+                        disabled={deletingId === gift._id}
+                        className="flex items-center justify-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {deletingId === gift._id
+                          ? <Loader2 size={11} className="animate-spin" />
+                          : <Trash2 size={11} />
+                        }
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {modalMode && (
+        <GiftFormModal
+          initial={editTarget}
+          onSave={handleSave}
+          onClose={closeModal}
+          saving={saving}
+          error={modalError}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── main section ─────────────────────────────────────────────────────────────
+
+const VALID_CTABS = new Set(['calls', 'config', 'gifts']);
+
+const CallManagementSection = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = VALID_CTABS.has(searchParams.get('ctab')) ? searchParams.get('ctab') : 'calls';
+
+  const setActiveTab = (id) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (id === 'calls') p.delete('ctab'); else p.set('ctab', id);
+      return p;
+    }, { replace: true });
+  };
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+
+      {/* Section tab bar */}
+      <div className="flex border-b border-neutral-200">
+        {SECTION_TABS.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition ${
+              activeTab === id
+                ? '-mb-px border-black text-neutral-900'
+                : 'border-transparent text-neutral-400 hover:text-neutral-700'
+            }`}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'calls'  && <CallsTab />}
+      {activeTab === 'config' && <CallConfigTab />}
+      {activeTab === 'gifts'  && <GiftConfigTab />}
+    </div>
+  );
+};
+
+export default CallManagementSection;

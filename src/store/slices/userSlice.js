@@ -7,22 +7,10 @@ export const fetchUsers = createAsyncThunk(
   'user/fetchUsers',
   async (params, { rejectWithValue }) => {
     try {
-      const { data } = await userService.getUsers({ ...params, role: 'user' });
+      const { data } = await userService.getUsers(params);
       return data.data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch users');
-    }
-  }
-);
-
-export const fetchHosts = createAsyncThunk(
-  'user/fetchHosts',
-  async (params, { rejectWithValue }) => {
-    try {
-      const { data } = await userService.getUsers({ ...params, role: 'host' });
-      return data.data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to fetch hosts');
     }
   }
 );
@@ -63,18 +51,26 @@ export const changeToHost = createAsyncThunk(
   }
 );
 
+export const adjustWallet = createAsyncThunk(
+  'user/adjustWallet',
+  async ({ userId, adjustment, reason }, { rejectWithValue }) => {
+    try {
+      const { data } = await userService.adjustWallet(userId, { adjustment, reason });
+      return { userId, wallet: data.data };
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to adjust wallet');
+    }
+  }
+);
+
 // ─── slice ────────────────────────────────────────────────────────────────────
 
 const initialState = {
   users: [],
-  usersLoading: false,
-  usersError: null,
-  usersPagination: { total: 0, page: 1, limit: 20, pages: 0 },
-
   hosts: [],
-  hostsLoading: false,
-  hostsError: null,
-  hostsPagination: { total: 0, page: 1, limit: 20, pages: 0 },
+  loading: false,
+  error: null,
+  pagination: { total: 0, page: 1, limit: 20, pages: 0 },
 
   stats: { totalUsers: 0, activeUsers: 0, verifiedUsers: 0, onlineUsers: 0, totalHosts: 0 },
 
@@ -87,6 +83,10 @@ const initialState = {
 
   promotingId: null,
   promoteError: null,
+
+  adjustLoading: false,
+  adjustError: null,
+  adjustSuccess: false,
 };
 
 const userSlice = createSlice({
@@ -97,46 +97,34 @@ const userSlice = createSlice({
       state.updateSuccess = false;
       state.updateError = null;
     },
+    resetAdjustStatus(state) {
+      state.adjustSuccess = false;
+      state.adjustError = null;
+    },
     clearUserErrors(state) {
-      state.usersError = null;
-      state.hostsError = null;
+      state.error = null;
       state.deleteError = null;
       state.promoteError = null;
     },
   },
   extraReducers: (builder) => {
-    // fetchUsers
+    // fetchUsers — single endpoint returns a mixed-role page; split it client-side
     builder
       .addCase(fetchUsers.pending, (state) => {
-        state.usersLoading = true;
-        state.usersError = null;
+        state.loading = true;
+        state.error = null;
       })
       .addCase(fetchUsers.fulfilled, (state, action) => {
-        state.usersLoading = false;
-        state.users = action.payload?.users ?? [];
-        state.usersPagination = action.payload?.pagination ?? state.usersPagination;
+        state.loading = false;
+        const all = action.payload?.users ?? [];
+        state.users = all.filter((u) => u.role === 'user');
+        state.hosts = all.filter((u) => u.role === 'host');
+        state.pagination = action.payload?.pagination ?? state.pagination;
         if (action.payload?.stats) state.stats = action.payload.stats;
       })
       .addCase(fetchUsers.rejected, (state, action) => {
-        state.usersLoading = false;
-        state.usersError = action.payload;
-      });
-
-    // fetchHosts
-    builder
-      .addCase(fetchHosts.pending, (state) => {
-        state.hostsLoading = true;
-        state.hostsError = null;
-      })
-      .addCase(fetchHosts.fulfilled, (state, action) => {
-        state.hostsLoading = false;
-        state.hosts = action.payload?.users ?? [];
-        state.hostsPagination = action.payload?.pagination ?? state.hostsPagination;
-        if (action.payload?.stats) state.stats = action.payload.stats;
-      })
-      .addCase(fetchHosts.rejected, (state, action) => {
-        state.hostsLoading = false;
-        state.hostsError = action.payload;
+        state.loading = false;
+        state.error = action.payload;
       });
 
     // updateUser
@@ -171,7 +159,7 @@ const userSlice = createSlice({
         state.deletingId = null;
         state.users = state.users.filter((u) => u._id !== action.payload);
         state.hosts = state.hosts.filter((h) => h._id !== action.payload);
-        if (state.usersPagination.total > 0) state.usersPagination.total -= 1;
+        if (state.pagination.total > 0) state.pagination.total -= 1;
       })
       .addCase(deleteUser.rejected, (state, action) => {
         state.deletingId = null;
@@ -193,8 +181,24 @@ const userSlice = createSlice({
         state.promotingId = null;
         state.promoteError = action.payload;
       });
+
+    // adjustWallet
+    builder
+      .addCase(adjustWallet.pending, (state) => {
+        state.adjustLoading = true;
+        state.adjustError = null;
+        state.adjustSuccess = false;
+      })
+      .addCase(adjustWallet.fulfilled, (state) => {
+        state.adjustLoading = false;
+        state.adjustSuccess = true;
+      })
+      .addCase(adjustWallet.rejected, (state, action) => {
+        state.adjustLoading = false;
+        state.adjustError = action.payload;
+      });
   },
 });
 
-export const { resetUpdateStatus, clearUserErrors } = userSlice.actions;
+export const { resetUpdateStatus, resetAdjustStatus, clearUserErrors } = userSlice.actions;
 export default userSlice.reducer;

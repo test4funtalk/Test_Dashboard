@@ -4,4 +4,19 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('react-dom'))        return 'vendor-react';
+          if (id.includes('react-router'))      return 'vendor-router';
+          if (id.includes('@reduxjs') || id.includes('react-redux') || id.includes('immer')) return 'vendor-redux';
+          if (id.includes('lucide-react'))      return 'vendor-icons';
+          if (id.includes('axios'))             return 'vendor-axios';
+          return 'vendor';
+        },
+      },
+    },
+  },
 })

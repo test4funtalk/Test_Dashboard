@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
-  Package, Megaphone, Settings, LogOut, Crown, Menu,
+  Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
@@ -14,6 +14,8 @@ import UserManagementSection from './sections/UserManagementSection';
 import PaymentManagementSection from './sections/PaymentManagementSection';
 import PackageManagementSection from './sections/PackageManagementSection';
 import AdsManagementSection from './sections/AdsManagementSection';
+import CallManagementSection from './sections/CallManagementSection';
+import ProfileManagementSection from './sections/ProfileManagementSection';
 import SettingsSection from './sections/SettingsSection';
 
 // ─── config ───────────────────────────────────────────────────────────────────
@@ -25,6 +27,8 @@ const NAV = [
   { id: 'payments',  label: 'Payment Management',   Icon: CreditCard      },
   { id: 'packages',  label: 'Package Management',   Icon: Package         },
   { id: 'ads',       label: 'Ads Management',       Icon: Megaphone       },
+  { id: 'calls',     label: 'Call Management',      Icon: PhoneCall       },
+  { id: 'profile',   label: 'Profile Management',   Icon: Languages       },
   { id: 'settings',  label: 'Settings',             Icon: Settings        },
 ];
 
@@ -35,6 +39,8 @@ const PAGE_META = {
   payments:  { title: 'Payment Management',  sub: 'Track transactions and revenue'             },
   packages:  { title: 'Package Management',  sub: 'Manage subscription packages and plans'    },
   ads:       { title: 'Ads Management',      sub: 'Monitor and control ad campaigns'           },
+  calls:     { title: 'Call Management',     sub: 'Browse and inspect all platform calls'      },
+  profile:   { title: 'Profile Management',  sub: 'Manage platform languages and tags'         },
   settings:  { title: 'Settings',            sub: 'Manage your account settings'               },
 };
 
@@ -45,6 +51,8 @@ const SECTION_MAP = {
   payments:  PaymentManagementSection,
   packages:  PackageManagementSection,
   ads:       AdsManagementSection,
+  calls:     CallManagementSection,
+  profile:   ProfileManagementSection,
   settings:  SettingsSection,
 };
 

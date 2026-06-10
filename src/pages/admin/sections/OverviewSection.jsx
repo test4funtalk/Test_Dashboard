@@ -27,8 +27,9 @@ const OverviewSection = () => {
   const { currentAdmin, loading } = useSelector((s) => s.auth);
 
   useEffect(() => {
-    dispatch(fetchMe());
-  }, [dispatch]);
+    // skip API call if data already loaded from localStorage on startup
+    if (!currentAdmin) dispatch(fetchMe());
+  }, [dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading && !currentAdmin) return <OverviewSkeleton />;
   if (!currentAdmin) return null;

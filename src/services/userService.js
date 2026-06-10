@@ -12,6 +12,12 @@ const userService = {
 
   changeToHost: (userId) =>
     api.patch(`/api/profile/admin/change-to-host/${userId}`),
+
+  getWallet: (userId) =>
+    api.get(`/api/wallet/admin/${userId}`),
+
+  adjustWallet: (userId, payload) =>
+    api.post(`/api/wallet/admin/adjust/${userId}`, payload),
 };
 
 export default userService;
