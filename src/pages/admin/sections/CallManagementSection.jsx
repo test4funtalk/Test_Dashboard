@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   PhoneCall, Phone, Video, Search, RefreshCw, AlertCircle,
-  Loader2, ChevronLeft, ChevronRight, Clock, Coins, Gift,
+  Loader2, ChevronLeft, ChevronRight, Coins, Gift,
   Settings, Plus, Pencil, Trash2, X, CheckCircle, Save,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
@@ -173,68 +173,107 @@ const CallsTab = () => {
           </div>
         )}
 
-        {/* List */}
-        <div className="p-4 sm:p-6">
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
-              <Loader2 size={20} className="animate-spin" /> Loading calls…
-            </div>
-          ) : calls.length === 0 ? (
-            <div className="py-16 text-center">
-              <PhoneCall size={36} className="mx-auto mb-3 text-neutral-200" />
-              <p className="text-sm font-medium text-neutral-400">
-                {search || status || callType ? 'No calls match your filters' : 'No calls yet'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {calls.map((call) => {
-                const TypeIcon = call.callType === 'video' ? Video : Phone;
-                return (
-                  <button
-                    key={call._id}
-                    onClick={() => setActiveCallId(call._id)}
-                    className="flex w-full flex-col gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 text-left transition hover:border-neutral-200 hover:bg-white sm:flex-row sm:items-center sm:justify-between sm:px-4"
-                  >
-                    <div className="flex flex-1 items-center gap-4 min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <AvatarDisplay src={call.callerId?.avatar} name={call.callerId?.username} size="sm" />
-                        <span className="truncate text-sm font-medium">{call.callerId?.username || '—'}</span>
-                      </div>
-                      <span className="flex-shrink-0 text-neutral-300">→</span>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <AvatarDisplay src={call.hostId?.avatar} name={call.hostId?.username} size="sm" />
-                        <span className="truncate text-sm font-medium">{call.hostId?.username || '—'}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0 sm:justify-end">
-                      <span className="flex items-center gap-1 text-xs text-neutral-500">
-                        <TypeIcon size={11} /> <span className="capitalize">{call.callType}</span>
-                      </span>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
-                        {call.status}
-                      </span>
-                      <span className="flex items-center gap-1 text-xs text-neutral-500">
-                        <Clock size={11} /> {fmtDuration(call.duration)}
-                      </span>
-                      {!!call.billing?.totalCoinsDeducted && (
-                        <span className="flex items-center gap-1 text-xs text-neutral-500">
-                          <Coins size={11} /> {call.billing.totalCoinsDeducted}
+        {/* Table */}
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+            <Loader2 size={20} className="animate-spin" /> Loading calls…
+          </div>
+        ) : calls.length === 0 ? (
+          <div className="py-16 text-center">
+            <PhoneCall size={36} className="mx-auto mb-3 text-neutral-200" />
+            <p className="text-sm font-medium text-neutral-400">
+              {search || status || callType ? 'No calls match your filters' : 'No calls yet'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] border-collapse text-sm">
+              <thead>
+                <tr className="bg-neutral-50">
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Type</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calls.map((call, index) => {
+                  const TypeIcon = call.callType === 'video' ? Video : Phone;
+                  return (
+                    <tr
+                      key={call._id}
+                      onClick={() => setActiveCallId(call._id)}
+                      className="cursor-pointer transition-colors hover:bg-neutral-50"
+                    >
+                      <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
+                        {(page - 1) * 15 + index + 1}
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <AvatarDisplay src={call.callerId?.avatar} name={call.callerId?.username} size="sm" />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-neutral-900">{call.callerId?.username || '—'}</p>
+                            {call.callerId?.phone && <p className="truncate text-xs text-neutral-400">{call.callerId.phone}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <AvatarDisplay src={call.hostId?.avatar} name={call.hostId?.username} size="sm" />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-neutral-900">{call.hostId?.username || '—'}</p>
+                            {call.hostId?.phone && <p className="truncate text-xs text-neutral-400">{call.hostId.phone}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        <span className="flex items-center gap-1.5 text-xs text-neutral-600">
+                          <TypeIcon size={12} />
+                          <span className="capitalize">{call.callType}</span>
                         </span>
-                      )}
-                      {!!call.gifts?.totalGiftCoins && (
-                        <span className="flex items-center gap-1 text-xs text-neutral-500">
-                          <Gift size={11} /> {call.gifts.totalGiftCoins}
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3">
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
+                          {call.status}
                         </span>
-                      )}
-                      <span className="text-xs text-neutral-400">{fmtDateTime(call.createdAt)}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
+                        {fmtDuration(call.duration)}
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {call.billing?.totalCoinsDeducted
+                          ? <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{call.billing.totalCoinsDeducted}</span>
+                          : <span className="text-xs text-neutral-300">—</span>
+                        }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {call.billing?.totalCashEarned != null
+                          ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.billing.totalCashEarned}</span>
+                          : <span className="text-xs text-neutral-300">—</span>
+                        }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {call.gifts?.totalGiftCoins
+                          ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{call.gifts.totalGiftCoins}</span>
+                          : <span className="text-xs text-neutral-300">—</span>
+                        }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
+                        {fmtDateTime(call.createdAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {!loading && calls.length > 0 && pages > 1 && (
           <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 sm:px-6">
