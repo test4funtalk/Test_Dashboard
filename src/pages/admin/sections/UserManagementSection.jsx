@@ -115,6 +115,14 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Auto-remove any selected values that no longer exist in the API list
+  useEffect(() => {
+    if (!languages.length) return;
+    const validSet = new Set(languages.map(getLangName));
+    const cleaned = value.filter((v) => validSet.has(v));
+    if (cleaned.length !== value.length) onChange(cleaned);
+  }, [languages]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const openDropdown = () => {
     if (ref.current) {
       const rect = ref.current.getBoundingClientRect();
@@ -125,11 +133,17 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
 
   const getLangName = (l) => l?.name ?? l?.languageName ?? l?.language ?? String(l);
 
+  // Only chips whose name exists in the fetched list are shown
+  const validSet   = new Set(languages.map(getLangName));
+  const validChips = languages.length ? value.filter((v) => validSet.has(v)) : value;
+
   const filtered = languages.filter((l) =>
     getLangName(l).toLowerCase().includes(search.toLowerCase())
   );
 
   const toggle = (name) => {
+    // Guard: only allow toggling names present in the API list
+    if (languages.length && !validSet.has(name)) return;
     onChange(value.includes(name) ? value.filter((v) => v !== name) : [...value, name]);
   };
 
@@ -140,10 +154,12 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
         onClick={openDropdown}
         className="min-h-[42px] w-full cursor-pointer rounded-xl border border-neutral-200 px-3 py-2 focus-within:border-neutral-400 flex flex-wrap gap-1.5 items-start"
       >
-        {value.length === 0 && (
-          <span className="text-sm text-neutral-400 py-0.5">Select languages…</span>
+        {validChips.length === 0 && (
+          <span className="text-sm text-neutral-400 py-0.5">
+            {loading ? 'Loading languages…' : 'Choose from listed languages…'}
+          </span>
         )}
-        {value.map((lang) => (
+        {validChips.map((lang) => (
           <span key={lang} className="flex items-center gap-1 rounded-full bg-neutral-900 px-2.5 py-0.5 text-xs font-medium text-white">
             {lang}
             <button
@@ -163,12 +179,12 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
       {/* Dropdown */}
       {open && (
         <div className={`absolute z-50 w-full rounded-xl border border-neutral-200 bg-white shadow-lg ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-          <div className="p-2">
+          <div className="p-2 border-b border-neutral-50">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search language…"
+              placeholder="Filter listed languages…"
               className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
               autoFocus
             />
@@ -179,7 +195,10 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
                 <Loader2 size={14} className="animate-spin" /> Loading…
               </div>
             ) : filtered.length === 0 ? (
-              <p className="py-4 text-center text-xs text-neutral-400">No languages found</p>
+              <div className="py-5 text-center">
+                <p className="text-xs font-medium text-neutral-400">No match in available languages</p>
+                <p className="mt-0.5 text-xs text-neutral-300">Only languages from the system list can be selected</p>
+              </div>
             ) : (
               filtered.map((lang) => {
                 const name = getLangName(lang);
@@ -195,11 +214,14 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
                       onChange={() => toggle(name)}
                       className="h-4 w-4 rounded accent-black"
                     />
-                    <span className="text-sm">{name}</span>
+                    <span className="text-sm capitalize">{name}</span>
                   </label>
                 );
               })
             )}
+          </div>
+          <div className="border-t border-neutral-50 px-3 py-2">
+            <p className="text-[10px] text-neutral-300">Only listed languages can be selected</p>
           </div>
         </div>
       )}
@@ -1401,6 +1423,7 @@ const UserManagementSection = () => {
   const [editTarget, setEditTarget]     = useState(null);
   const [editForm, setEditForm]         = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   // languages
   const [languages, setLanguages]     = useState([]);
@@ -1414,6 +1437,7 @@ const UserManagementSection = () => {
       .catch(() => {})
       .finally(() => setLangsLoading(false));
   }, []);
+
 
   // ── debounce search ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1603,20 +1627,28 @@ const UserManagementSection = () => {
               className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={sort}
-              onChange={(e) => { setSort(e.target.value); setPage(1); }}
-              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
-            >
-              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+          <div className="flex flex-1 items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <select
+                value={sort}
+                onChange={(e) => { setSort(e.target.value); setPage(1); }}
+                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              >
+                {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <button
+                onClick={doFetch}
+                className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+              >
+                <RefreshCw size={13} className={listLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
             <button
-              onClick={doFetch}
-              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-neutral-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-neutral-700"
             >
-              <RefreshCw size={13} className={listLoading ? 'animate-spin' : ''} />
-              Refresh
+              <Plus size={13} /> Add {isUsersTab ? 'User' : 'Host'}
             </button>
           </div>
         </div>
@@ -1762,6 +1794,333 @@ const UserManagementSection = () => {
           onConfirm={confirmDelete}
         />
       )}
+      {showAddModal && (
+        <AddUserModal
+          role={isUsersTab ? 'user' : 'host'}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={doFetch}
+          languages={languages}
+          langsLoading={langsLoading}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── add user / host modal ────────────────────────────────────────────────────
+
+const COUNTRY_CODES = [
+  { flag: '🇮🇳', name: 'India',          dial: '+91'  },
+  { flag: '🇺🇸', name: 'United States',  dial: '+1'   },
+  { flag: '🇬🇧', name: 'United Kingdom', dial: '+44'  },
+  { flag: '🇦🇺', name: 'Australia',      dial: '+61'  },
+  { flag: '🇨🇦', name: 'Canada',         dial: '+1'   },
+  { flag: '🇦🇪', name: 'UAE',            dial: '+971' },
+  { flag: '🇸🇦', name: 'Saudi Arabia',   dial: '+966' },
+  { flag: '🇸🇬', name: 'Singapore',      dial: '+65'  },
+  { flag: '🇲🇾', name: 'Malaysia',       dial: '+60'  },
+  { flag: '🇳🇿', name: 'New Zealand',    dial: '+64'  },
+  { flag: '🇵🇰', name: 'Pakistan',       dial: '+92'  },
+  { flag: '🇧🇩', name: 'Bangladesh',     dial: '+880' },
+  { flag: '🇱🇰', name: 'Sri Lanka',      dial: '+94'  },
+  { flag: '🇳🇵', name: 'Nepal',          dial: '+977' },
+  { flag: '🇲🇻', name: 'Maldives',       dial: '+960' },
+  { flag: '🇿🇦', name: 'South Africa',   dial: '+27'  },
+  { flag: '🇳🇬', name: 'Nigeria',        dial: '+234' },
+  { flag: '🇰🇪', name: 'Kenya',          dial: '+254' },
+  { flag: '🇩🇪', name: 'Germany',        dial: '+49'  },
+  { flag: '🇫🇷', name: 'France',         dial: '+33'  },
+  { flag: '🇮🇹', name: 'Italy',          dial: '+39'  },
+  { flag: '🇪🇸', name: 'Spain',          dial: '+34'  },
+  { flag: '🇳🇱', name: 'Netherlands',    dial: '+31'  },
+  { flag: '🇨🇭', name: 'Switzerland',    dial: '+41'  },
+  { flag: '🇸🇪', name: 'Sweden',         dial: '+46'  },
+  { flag: '🇳🇴', name: 'Norway',         dial: '+47'  },
+  { flag: '🇩🇰', name: 'Denmark',        dial: '+45'  },
+  { flag: '🇷🇺', name: 'Russia',         dial: '+7'   },
+  { flag: '🇨🇳', name: 'China',          dial: '+86'  },
+  { flag: '🇯🇵', name: 'Japan',          dial: '+81'  },
+  { flag: '🇰🇷', name: 'South Korea',    dial: '+82'  },
+  { flag: '🇵🇭', name: 'Philippines',    dial: '+63'  },
+  { flag: '🇮🇩', name: 'Indonesia',      dial: '+62'  },
+  { flag: '🇻🇳', name: 'Vietnam',        dial: '+84'  },
+  { flag: '🇹🇭', name: 'Thailand',       dial: '+66'  },
+  { flag: '🇧🇷', name: 'Brazil',         dial: '+55'  },
+  { flag: '🇲🇽', name: 'Mexico',         dial: '+52'  },
+  { flag: '🇦🇷', name: 'Argentina',      dial: '+54'  },
+  { flag: '🇶🇦', name: 'Qatar',          dial: '+974' },
+  { flag: '🇰🇼', name: 'Kuwait',         dial: '+965' },
+  { flag: '🇧🇭', name: 'Bahrain',        dial: '+973' },
+  { flag: '🇴🇲', name: 'Oman',           dial: '+968' },
+  { flag: '🇮🇷', name: 'Iran',           dial: '+98'  },
+  { flag: '🇹🇷', name: 'Turkey',         dial: '+90'  },
+  { flag: '🇮🇱', name: 'Israel',         dial: '+972' },
+  { flag: '🇪🇬', name: 'Egypt',          dial: '+20'  },
+];
+
+const PhoneInput = ({ value, onChange }) => {
+  const [open, setOpen]     = useState(false);
+  const [search, setSearch] = useState('');
+  const ref                 = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selected = COUNTRY_CODES.find((c) => c.dial === value.dial && c.name === value.countryName)
+    ?? COUNTRY_CODES.find((c) => c.dial === value.dial)
+    ?? COUNTRY_CODES[0];
+
+  const filtered = search.trim()
+    ? COUNTRY_CODES.filter((c) =>
+        c.name.toLowerCase().includes(search.toLowerCase()) ||
+        c.dial.includes(search)
+      )
+    : COUNTRY_CODES;
+
+  return (
+    <div ref={ref} className="relative flex rounded-xl border border-neutral-200 focus-within:border-neutral-400 overflow-hidden">
+      {/* Country picker trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex flex-shrink-0 items-center gap-1.5 border-r border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm transition hover:bg-neutral-100"
+      >
+        <span className="text-base leading-none">{selected.flag}</span>
+        <span className="font-mono font-medium text-neutral-700">{selected.dial}</span>
+        <ChevronRight size={12} className={`text-neutral-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+
+      {/* Number input */}
+      <input
+        type="tel"
+        required
+        value={value.number}
+        onChange={(e) => onChange({ ...value, number: e.target.value })}
+        placeholder="9000000001"
+        className="flex-1 bg-transparent px-3 py-2.5 text-sm outline-none"
+      />
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-neutral-200 bg-white shadow-xl">
+          <div className="p-2 border-b border-neutral-100">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search country or code…"
+              autoFocus
+              className="w-full rounded-lg border border-neutral-200 px-3 py-1.5 text-xs outline-none focus:border-neutral-400"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="py-4 text-center text-xs text-neutral-400">No results</p>
+            ) : (
+              filtered.map((c) => (
+                <button
+                  key={`${c.name}-${c.dial}`}
+                  type="button"
+                  onClick={() => {
+                    onChange({ ...value, dial: c.dial, countryName: c.name });
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-sm transition hover:bg-neutral-50 ${
+                    selected?.name === c.name ? 'bg-neutral-100 font-semibold' : ''
+                  }`}
+                >
+                  <span className="text-base leading-none w-6 text-center">{c.flag}</span>
+                  <span className="flex-1 text-left text-neutral-800">{c.name}</span>
+                  <span className="font-mono text-xs text-neutral-400">{c.dial}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const EMPTY_ADD_FORM = {
+  phone: { dial: '+91', number: '', countryName: 'India' },
+  username: '', gender: '', dob: '', avatar: '',
+  motherTongue: [], activateScreenlock: 'not_allowed',
+};
+
+const AddUserModal = ({ role, onClose, onSuccess, languages, langsLoading }) => {
+  const isHost = role === 'host';
+  const [form, setForm]     = useState({ ...EMPTY_ADD_FORM, gender: isHost ? 'female' : '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState(null);
+  const [success, setSuccess] = useState(false);
+
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const body = {
+        role,
+        phone:              `${form.phone.dial}${form.phone.number.trim()}`,
+        username:           form.username.trim(),
+        gender:             form.gender,
+        activateScreenlock: form.activateScreenlock,
+        ...(form.dob        && { dob: form.dob }),
+        ...(form.avatar.trim() && { avatar: form.avatar.trim() }),
+        motherTongue: form.motherTongue.length ? form.motherTongue : null,
+      };
+      await api.post('/api/admin-auth/adminAddUsers', body);
+      setSuccess(true);
+      setTimeout(() => { onSuccess(); onClose(); }, 1200);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to create account');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="flex w-full flex-col max-h-[92vh] rounded-t-3xl border border-neutral-200 bg-white shadow-2xl sm:max-w-xl sm:rounded-2xl">
+
+        {/* Header */}
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-neutral-100 px-5 py-4">
+          <div>
+            <p className="font-semibold">Add {isHost ? 'Host' : 'User'}</p>
+            <p className="text-xs text-neutral-400">Bypass OTP — account is created verified</p>
+          </div>
+          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-neutral-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto">
+          {error && (
+            <div className="mx-5 mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <AlertCircle size={15} /> {error}
+            </div>
+          )}
+          {success && (
+            <div className="mx-5 mt-4 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              <CheckCircle size={15} /> Account created successfully!
+            </div>
+          )}
+
+          <form id="add-user-form" onSubmit={handleSubmit} className="grid gap-4 p-5 sm:grid-cols-2">
+
+            {/* Phone */}
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Phone *</label>
+              <PhoneInput value={form.phone} onChange={(v) => set('phone', v)} />
+            </div>
+
+            {/* Username */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Username *</label>
+              <input
+                type="text" required
+                value={form.username}
+                onChange={(e) => set('username', e.target.value)}
+                placeholder="priya_seed"
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+
+            {/* Gender */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Gender *</label>
+              <select
+                required
+                value={form.gender}
+                onChange={(e) => set('gender', e.target.value)}
+                disabled={isHost}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400 disabled:bg-neutral-50 disabled:cursor-not-allowed"
+              >
+                <option value="">— select —</option>
+                {(isHost ? ['female'] : ['male', 'female', 'other']).map((g) => (
+                  <option key={g} value={g} className="capitalize">{g}</option>
+                ))}
+              </select>
+              {isHost && <p className="mt-1 text-xs text-amber-600">Hosts must be female</p>}
+            </div>
+
+            {/* DOB */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Date of Birth</label>
+              <input
+                type="date"
+                value={form.dob}
+                onChange={(e) => set('dob', e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+
+            {/* Screen Lock */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Screen Lock</label>
+              <select
+                value={form.activateScreenlock}
+                onChange={(e) => set('activateScreenlock', e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              >
+                <option value="not_allowed">Not Allowed</option>
+                <option value="allowed">Allowed</option>
+              </select>
+            </div>
+
+            {/* Avatar URL */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Avatar URL</label>
+              <input
+                type="url"
+                value={form.avatar}
+                onChange={(e) => set('avatar', e.target.value)}
+                placeholder="https://cdn.example.com/avatar.jpg"
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+
+            {/* Mother Tongue */}
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Mother Tongue</label>
+              <MotherTongueSelect
+                value={form.motherTongue}
+                onChange={(v) => set('motherTongue', v)}
+                languages={languages}
+                loading={langsLoading}
+              />
+            </div>
+          </form>
+        </div>
+
+        {/* Footer */}
+        <div className="flex flex-shrink-0 gap-2 border-t border-neutral-100 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="add-user-form"
+            disabled={saving || success}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-900 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            {saving ? 'Creating…' : `Create ${isHost ? 'Host' : 'User'}`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
