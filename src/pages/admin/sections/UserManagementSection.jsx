@@ -6,8 +6,9 @@ import {
   ChevronLeft, ChevronRight, Users, UserCheck, ShieldCheck,
   Wifi, AlertCircle, Loader2, CheckCircle, Phone, Calendar,
   Lock, Globe, Clock, UserCircle, Shield, Video, Coins, Gift,
-  Star, PhoneCall, Wallet, TrendingUp, Minus, Plus,
+  PhoneCall, Wallet, TrendingUp, Minus, Plus,
   Copy, Check, Receipt, Package, IndianRupee,
+  IdCard, Banknote, Landmark, ExternalLink, ImageOff, Ban, CreditCard,
 } from 'lucide-react';
 import {
   fetchUsers, updateUser, deleteUser,
@@ -265,6 +266,23 @@ const DATE_FILTERS = [
   { id: 'yesterday', label: 'Yesterday'  },
   { id: 'week',      label: 'This Week'  },
   { id: 'month',     label: 'This Month' },
+  { id: 'custom',    label: 'Custom Range' },
+];
+
+const CALL_STATUS_OPTIONS = [
+  { value: '',          label: 'All Statuses' },
+  { value: 'ended',     label: 'Ended'        },
+  { value: 'missed',    label: 'Missed'       },
+  { value: 'rejected',  label: 'Rejected'     },
+  { value: 'cancelled', label: 'Cancelled'    },
+  { value: 'ongoing',   label: 'Ongoing'      },
+  { value: 'ringing',   label: 'Ringing'      },
+];
+
+const CALL_TYPE_OPTIONS = [
+  { value: '',      label: 'All Types' },
+  { value: 'voice', label: 'Voice'     },
+  { value: 'video', label: 'Video'     },
 ];
 
 const getDateRange = (period) => {
@@ -292,7 +310,11 @@ const CallHistoryCard = ({ userId, role }) => {
   const [page, setPage]       = useState(1);
   const [pages, setPages]     = useState(1);
   const [total, setTotal]     = useState(0);
-  const [period, setPeriod]   = useState('all');
+  const [period, setPeriod]     = useState('all');
+  const [status, setStatus]     = useState('');
+  const [callType, setCallType] = useState('');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo,   setCustomTo]   = useState('');
   const [activeCallId, setActiveCallId] = useState(null);
 
   const isHost = role === 'host';
@@ -305,7 +327,15 @@ const CallHistoryCard = ({ userId, role }) => {
         ? `/api/admin/hosts/${userId}/calls/earnings`
         : `/api/admin/users/${userId}/calls`;
       const { data } = await api.get(endpoint, {
-        params: { page: targetPage, limit: 70, ...getDateRange(period) },
+        params: {
+          page: targetPage,
+          limit: 70,
+          ...(period !== 'custom' && getDateRange(period)),
+          ...(period === 'custom' && customFrom && { startDate: new Date(customFrom).toISOString() }),
+          ...(period === 'custom' && customTo   && { endDate: new Date(customTo + 'T23:59:59').toISOString() }),
+          ...(status   && { status }),
+          ...(callType && { callType }),
+        },
       });
       const list = Array.isArray(data?.data) ? data.data : [];
       const pagination = data?.pagination ?? {};
@@ -317,210 +347,276 @@ const CallHistoryCard = ({ userId, role }) => {
     } finally {
       setLoading(false);
     }
-  }, [isHost, userId, period]);
+  }, [isHost, userId, period, status, callType, customFrom, customTo]);
 
   useEffect(() => { fetchHistory(page); }, [fetchHistory, page]);
 
-  const onPeriodChange = (p) => { setPeriod(p); setPage(1); };
+  const onFilterChange = (setter) => (e) => { setter(e.target.value); setPage(1); };
+
+  const onPeriodChange = (e) => {
+    const value = e.target.value;
+    setPeriod(value);
+    setPage(1);
+    if (value !== 'custom') { setCustomFrom(''); setCustomTo(''); }
+  };
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white sm:col-span-2">
 
-      {/* ── Header + date filter ── */}
-      <div className="flex flex-col gap-3 border-b border-neutral-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <PhoneCall size={15} className="text-neutral-400" />
-          <p className="text-sm font-semibold text-neutral-800">Call History</p>
-          {total > 0 && (
-            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">{total}</span>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {DATE_FILTERS.map(({ id, label }) => (
-            <button
-              key={id}
-              onClick={() => onPeriodChange(id)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                period === id
-                  ? 'bg-neutral-900 text-white'
-                  : 'border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-800'
-              }`}
+      {/* ── Header + filters (styled like Call Management → Calls tab) ── */}
+      <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <PhoneCall size={15} className="text-neutral-400" />
+            <p className="text-sm font-semibold text-neutral-800">Call History</p>
+            {total > 0 && (
+              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">{total}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={status}
+              onChange={onFilterChange(setStatus)}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
             >
-              {label}
+              {CALL_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <select
+              value={callType}
+              onChange={onFilterChange(setCallType)}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+            >
+              {CALL_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <select
+              value={period}
+              onChange={onPeriodChange}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+            >
+              {DATE_FILTERS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+            <button
+              onClick={() => fetchHistory(page)}
+              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
             </button>
-          ))}
+          </div>
         </div>
-      </div>
 
-      {/* ── Body ── */}
-      <div className="divide-y divide-neutral-50">
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 py-12 text-neutral-400">
-            <Loader2 size={18} className="animate-spin" /> Loading calls…
-          </div>
-        ) : error ? (
-          <div className="m-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
-            <AlertCircle size={14} /> {error}
-          </div>
-        ) : calls.length === 0 ? (
-          <div className="py-12 text-center">
-            <PhoneCall size={30} className="mx-auto mb-2 text-neutral-200" />
-            <p className="text-sm font-medium text-neutral-400">
-              {period !== 'all' ? 'No calls in this period' : 'No calls yet'}
-            </p>
-          </div>
-        ) : (
-          calls.map((call, idx) => {
-            const TypeIcon = call.callType === 'video' ? Video : Phone;
-
-            /* ════════════════════════════════════════════
-               HOST ROW  –  /calls/earnings response shape
-               ════════════════════════════════════════════ */
-            if (isHost) {
-              const hasEarnings = call.earnings?.totalCash != null;
-              const giftCount   = call.gifts?.length ?? 0;
-              return (
-                <button
-                  key={call._id ?? idx}
-                  onClick={() => call._id && setActiveCallId(call._id)}
-                  disabled={!call._id}
-                  className="flex w-full gap-3 p-4 text-left transition hover:bg-neutral-50 disabled:cursor-default sm:gap-4 sm:p-5"
-                >
-                  {/* Avatar */}
-                  <AvatarDisplay
-                    src={call.user?.avatar}
-                    name={call.user?.username}
-                    size="md"
-                    className="mt-0.5 flex-shrink-0"
-                  />
-
-                  {/* Main info */}
-                  <div className="min-w-0 flex-1">
-                    {/* Name + status */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="truncate text-sm font-semibold text-neutral-900">
-                        {call.user?.username || '—'}
-                      </span>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
-                        {call.status}
-                      </span>
-                    </div>
-
-                    {/* Date */}
-                    <p className="mt-0.5 text-xs text-neutral-400">{fmtDateTime(call.startedAt)}</p>
-
-                    {/* Meta chips */}
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <span className="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-600">
-                        <TypeIcon size={10} /> <span className="capitalize">{call.callType}</span>
-                      </span>
-                      <span className="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-600">
-                        <Clock size={10} /> {fmtDuration(call.duration)}
-                      </span>
-                      {giftCount > 0 && (
-                        <span className="flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                          <Gift size={10} /> {giftCount} gift{giftCount > 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Earnings panel */}
-                  {hasEarnings && (
-                    <div className="flex-shrink-0 self-start rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-right sm:self-center sm:min-w-[110px]">
-                      <p className="text-sm font-black text-emerald-700 whitespace-nowrap">
-                        {fmtINR(call.earnings.totalCash)}
-                      </p>
-                      <div className="mt-1.5 space-y-0.5 text-[11px] text-emerald-600">
-                        <p className="whitespace-nowrap">Call {fmtINR(call.earnings.callCash ?? 0)}</p>
-                        <p className="whitespace-nowrap">Gift {fmtINR(call.earnings.giftCash ?? 0)}</p>
-                      </div>
-                    </div>
-                  )}
-                </button>
-              );
-            }
-
-            /* ═══════════════════════════════════════
-               USER ROW  –  /calls response shape
-               ═══════════════════════════════════════ */
-            const isCaller  = call.callerId?._id === userId;
-            const other     = isCaller ? call.hostId : call.callerId;
-            const rating    = call.ratings?.hostRating?.score ?? call.ratings?.userRating?.score;
-            const coins     = call.billing?.totalCoinsDeducted;
-            const cashEarned = call.billing?.totalCashEarned;
-            const giftCoins = call.gifts?.totalGiftCoins;
-            return (
+        {/* Custom date range — shown only when "Custom Range" is selected */}
+        {period === 'custom' && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 sm:justify-end">
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || undefined}
+              onChange={(e) => { setCustomFrom(e.target.value); setPage(1); }}
+              className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+            />
+            <span className="text-xs text-neutral-400">→</span>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom || undefined}
+              onChange={(e) => { setCustomTo(e.target.value); setPage(1); }}
+              className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+            />
+            {(customFrom || customTo) && (
               <button
-                key={call._id ?? idx}
-                onClick={() => call._id && setActiveCallId(call._id)}
-                className="flex w-full gap-3 p-4 text-left transition hover:bg-neutral-50 sm:gap-4 sm:p-5"
+                onClick={() => { setCustomFrom(''); setCustomTo(''); setPage(1); }}
+                className="text-xs text-neutral-400 hover:text-neutral-700 underline"
               >
-                {/* Avatar */}
-                <AvatarDisplay
-                  src={other?.avatar}
-                  name={other?.username}
-                  size="md"
-                  className="mt-0.5 flex-shrink-0"
-                />
-
-                {/* Main info */}
-                <div className="min-w-0 flex-1">
-                  {/* Name + status + direction */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-neutral-900">
-                      {other?.username || '—'}
-                    </span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
-                      {call.status}
-                    </span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      isCaller
-                        ? 'border border-blue-200 bg-blue-50 text-blue-600'
-                        : 'border border-violet-200 bg-violet-50 text-violet-600'
-                    }`}>
-                      {isCaller ? '↑ Outgoing' : '↓ Incoming'}
-                    </span>
-                  </div>
-
-                  {/* Date */}
-                  <p className="mt-0.5 text-xs text-neutral-400">{fmtDateTime(call.startedAt)}</p>
-
-                  {/* Meta chips */}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-600">
-                      <TypeIcon size={10} /> <span className="capitalize">{call.callType}</span>
-                    </span>
-                    <span className="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-600">
-                      <Clock size={10} /> {fmtDuration(call.duration)}
-                    </span>
-                    {!!coins && (
-                      <span className="flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                        <Coins size={10} /> {coins} coins
-                      </span>
-                    )}
-                    {!!cashEarned && (
-                      <span className="flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                        {fmtINR(cashEarned)} earned
-                      </span>
-                    )}
-                    {!!giftCoins && (
-                      <span className="flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
-                        <Gift size={10} /> {giftCoins} gift coins
-                      </span>
-                    )}
-                    {!!rating && (
-                      <span className="flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-600">
-                        <Star size={10} className="fill-amber-400" /> {rating}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                Clear
               </button>
-            );
-          })
+            )}
+          </div>
         )}
       </div>
+
+      {/* ── Body — table styled exactly like Call Management → Calls tab ── */}
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+          <Loader2 size={20} className="animate-spin" /> Loading calls…
+        </div>
+      ) : error ? (
+        <div className="m-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+          <AlertCircle size={14} /> {error}
+        </div>
+      ) : calls.length === 0 ? (
+        <div className="py-16 text-center">
+          <PhoneCall size={36} className="mx-auto mb-3 text-neutral-200" />
+          <p className="text-sm font-medium text-neutral-400">
+            {period !== 'all' || status || callType ? 'No calls match your filters' : 'No calls yet'}
+          </p>
+        </div>
+      ) : isHost ? (
+        /* ════════════════════════════════════════════
+           HOST TABLE  –  /calls/earnings response shape
+           ════════════════════════════════════════════ */
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] border-collapse text-sm">
+            <thead>
+              <tr className="bg-neutral-50">
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Type</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calls.map((call, index) => {
+                const TypeIcon  = call.callType === 'video' ? Video : Phone;
+                const giftCount = call.gifts?.length ?? 0;
+                return (
+                  <tr
+                    key={call._id ?? index}
+                    onClick={() => call._id && setActiveCallId(call._id)}
+                    className="cursor-pointer transition-colors hover:bg-neutral-50"
+                  >
+                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
+                      {(page - 1) * 70 + index + 1}
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <AvatarDisplay src={call.user?.avatar} name={call.user?.username} size="sm" />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-neutral-900">{call.user?.username || '—'}</p>
+                          {call.user?.phone && <p className="truncate text-xs text-neutral-400">{call.user.phone}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      <span className="flex items-center gap-1.5 text-xs text-neutral-600">
+                        <TypeIcon size={12} />
+                        <span className="capitalize">{call.callType}</span>
+                      </span>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3">
+                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
+                        {call.status}
+                      </span>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
+                      {fmtDuration(call.duration)}
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {call.earnings?.totalCash != null
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.earnings.totalCash}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {giftCount > 0
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{giftCount}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
+                      {fmtDateTime(call.createdAt)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        /* ═══════════════════════════════════════
+           USER TABLE  –  /calls response shape
+           ═══════════════════════════════════════ */
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[960px] border-collapse text-sm">
+            <thead>
+              <tr className="bg-neutral-50">
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Type</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calls.map((call, index) => {
+                const TypeIcon = call.callType === 'video' ? Video : Phone;
+                return (
+                  <tr
+                    key={call._id ?? index}
+                    onClick={() => setActiveCallId(call._id)}
+                    className="cursor-pointer transition-colors hover:bg-neutral-50"
+                  >
+                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
+                      {(page - 1) * 70 + index + 1}
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <AvatarDisplay src={call.callerId?.avatar} name={call.callerId?.username} size="sm" />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-neutral-900">{call.callerId?.username || '—'}</p>
+                          {call.callerId?.phone && <p className="truncate text-xs text-neutral-400">{call.callerId.phone}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <AvatarDisplay src={call.hostId?.avatar} name={call.hostId?.username} size="sm" />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-neutral-900">{call.hostId?.username || '—'}</p>
+                          {call.hostId?.phone && <p className="truncate text-xs text-neutral-400">{call.hostId.phone}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      <span className="flex items-center gap-1.5 text-xs text-neutral-600">
+                        <TypeIcon size={12} />
+                        <span className="capitalize">{call.callType}</span>
+                      </span>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3">
+                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
+                        {call.status}
+                      </span>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
+                      {fmtDuration(call.duration)}
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {call.billing?.totalCoinsDeducted
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{call.billing.totalCoinsDeducted}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {call.billing?.totalCashEarned != null
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.billing.totalCashEarned}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {call.gifts?.totalGiftCoins
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{call.gifts.totalGiftCoins}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
+                      {fmtDateTime(call.createdAt)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {activeCallId && <CallDetailModal callId={activeCallId} onClose={() => setActiveCallId(null)} />}
 
@@ -576,6 +672,20 @@ const PAYMENT_DATE_FILTERS = [
   { id: 'custom', label: 'Custom'     },
 ];
 
+// 'today'/'week'/'month' are sent as-is — the API resolves the range
+// server-side so the admin's browser clock/timezone can't drift from
+// what the DB query uses.
+const buildDateParams = (p, from, to) => {
+  if (p === 'custom') {
+    const params = {};
+    if (from) params.startDate = new Date(from).toISOString();
+    if (to)   params.endDate   = new Date(to + 'T23:59:59').toISOString();
+    return params;
+  }
+  if (!p || p === 'all') return {};
+  return { period: p };
+};
+
 const PaymentHistoryCard = ({ userId }) => {
   const [purchases,   setPurchases]   = useState([]);
   const [wallet,      setWallet]      = useState(null);
@@ -588,16 +698,6 @@ const PaymentHistoryCard = ({ userId }) => {
   const [period,      setPeriod]      = useState('all');
   const [customFrom,  setCustomFrom]  = useState('');
   const [customTo,    setCustomTo]    = useState('');
-
-  const buildDateParams = useCallback((p, from, to) => {
-    if (p === 'custom') {
-      const params = {};
-      if (from) params.startDate = new Date(from).toISOString();
-      if (to)   params.endDate   = new Date(to + 'T23:59:59').toISOString();
-      return params;
-    }
-    return getDateRange(p);
-  }, []);
 
   const fetchPurchases = useCallback(async (targetPage, targetStatus, targetPeriod, from, to) => {
     setLoading(true);
@@ -622,7 +722,7 @@ const PaymentHistoryCard = ({ userId }) => {
     } finally {
       setLoading(false);
     }
-  }, [userId, buildDateParams]);
+  }, [userId]);
 
   useEffect(() => { fetchPurchases(1, '', 'all', '', ''); }, [fetchPurchases]);
 
@@ -674,13 +774,11 @@ const PaymentHistoryCard = ({ userId }) => {
       <div className="rounded-2xl border border-neutral-200 bg-white">
 
         {/* Header */}
-        <div className="border-b border-neutral-100 px-5 py-3">
-
-          {/* Title + filters row */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="border-b border-neutral-100 px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
             {/* Left: title */}
-            <div className="flex items-center gap-2 pt-0.5">
+            <div className="flex items-center gap-2">
               <Receipt size={15} className="text-neutral-400" />
               <p className="text-sm font-semibold text-neutral-800">Purchase History</p>
               {total > 0 && (
@@ -688,83 +786,79 @@ const PaymentHistoryCard = ({ userId }) => {
               )}
             </div>
 
-            {/* Right: all filters + refresh */}
-            <div className="flex flex-col items-end gap-2">
-
-              {/* Status filter */}
-              <div className="flex flex-wrap justify-end gap-1">
-                <span className="self-center text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-1">Status</span>
+            {/* Right: filters + refresh */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Status — segmented control */}
+              <div className="flex flex-wrap gap-0.5 rounded-lg border border-neutral-200 p-0.5">
                 {PURCHASE_STATUS_FILTERS.map(({ value, label }) => (
                   <button key={value} onClick={() => onStatusChange(value)}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
                       status === value
                         ? 'bg-neutral-900 text-white'
-                        : 'border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-800'
+                        : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800'
                     }`}>
                     {label}
                   </button>
                 ))}
               </div>
 
-              {/* Date filter + refresh */}
-              <div className="flex flex-wrap justify-end items-center gap-1">
-                <span className="self-center text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-1">Period</span>
+              {/* Period — dropdown */}
+              <select
+                value={period}
+                onChange={(e) => onPeriodChange(e.target.value)}
+                className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              >
                 {PAYMENT_DATE_FILTERS.map(({ id, label }) => (
-                  <button key={id} onClick={() => onPeriodChange(id)}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-                      period === id
-                        ? 'bg-neutral-800 text-white'
-                        : 'border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-800'
-                    }`}>
-                    {label}
-                  </button>
+                  <option key={id} value={id}>{label}</option>
                 ))}
-                <button
-                  onClick={() => fetchPurchases(page, status, period, customFrom, customTo)}
-                  disabled={loading}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
-                >
-                  <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
-                </button>
-              </div>
+              </select>
 
-              {/* Custom date pickers — shown below when Custom is active */}
-              {period === 'custom' && (
-                <div className="flex flex-wrap justify-end items-center gap-2">
-                  <input
-                    type="date"
-                    value={customFrom}
-                    max={customTo || undefined}
-                    onChange={(e) => setCustomFrom(e.target.value)}
-                    className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
-                  />
-                  <span className="text-xs text-neutral-400">→</span>
-                  <input
-                    type="date"
-                    value={customTo}
-                    min={customFrom || undefined}
-                    onChange={(e) => setCustomTo(e.target.value)}
-                    className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
-                  />
-                  <button
-                    onClick={applyCustom}
-                    disabled={!customFrom && !customTo}
-                    className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-neutral-700"
-                  >
-                    Apply
-                  </button>
-                  {(customFrom || customTo) && (
-                    <button
-                      onClick={() => { setCustomFrom(''); setCustomTo(''); fetchPurchases(1, status, 'custom', '', ''); }}
-                      className="text-xs text-neutral-400 hover:text-neutral-700 underline"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              )}
+              <button
+                onClick={() => fetchPurchases(page, status, period, customFrom, customTo)}
+                disabled={loading}
+                title="Refresh"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
+              >
+                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              </button>
             </div>
           </div>
+
+          {/* Custom date pickers — shown below when Custom is active */}
+          {period === 'custom' && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 sm:justify-end">
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || undefined}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+              />
+              <span className="text-xs text-neutral-400">→</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+              />
+              <button
+                onClick={applyCustom}
+                disabled={!customFrom && !customTo}
+                className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-neutral-700"
+              >
+                Apply
+              </button>
+              {(customFrom || customTo) && (
+                <button
+                  onClick={() => { setCustomFrom(''); setCustomTo(''); fetchPurchases(1, status, 'custom', '', ''); }}
+                  className="text-xs text-neutral-400 hover:text-neutral-700 underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Body */}
@@ -861,7 +955,7 @@ const PaymentHistoryCard = ({ userId }) => {
             <p className="text-xs text-neutral-400">Page {page} of {pages} · {total} total</p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { const n = Math.max(1, page - 1); setPage(n); fetchPurchases(n, status); }}
+                onClick={() => { const n = Math.max(1, page - 1); setPage(n); fetchPurchases(n, status, period, customFrom, customTo); }}
                 disabled={page <= 1}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:opacity-40"
               >
@@ -869,7 +963,7 @@ const PaymentHistoryCard = ({ userId }) => {
               </button>
               <span className="text-xs text-neutral-500">{page} / {pages}</span>
               <button
-                onClick={() => { const n = Math.min(pages, page + 1); setPage(n); fetchPurchases(n, status); }}
+                onClick={() => { const n = Math.min(pages, page + 1); setPage(n); fetchPurchases(n, status, period, customFrom, customTo); }}
                 disabled={page >= pages}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:opacity-40"
               >
@@ -1169,14 +1263,554 @@ const WalletCard = ({ userId }) => {
   );
 };
 
+// ─── host wallet card (cash earnings balance) ──────────────────────────────────
+
+const HostWalletCard = ({ hostId }) => {
+  const [wallet, setWallet]   = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+
+  const loadWallet = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get(`/api/admin/host-wallet/${hostId}`);
+      setWallet(data?.data ?? null);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load wallet');
+    } finally {
+      setLoading(false);
+    }
+  }, [hostId]);
+
+  useEffect(() => { loadWallet(); }, [loadWallet]);
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Wallet</p>
+        <button
+          onClick={loadWallet}
+          disabled={loading}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
+          title="Refresh wallet"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 py-4 text-sm text-neutral-400">
+          <Loader2 size={14} className="animate-spin" /> Loading wallet…
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-500">
+          <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+          <span>{error}</span>
+          <button onClick={loadWallet} className="ml-auto text-xs font-medium underline">Retry</button>
+        </div>
+      )}
+
+      {!loading && !error && wallet && (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl bg-neutral-900 p-4 text-white">
+              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium opacity-60">
+                <Wallet size={11} /> Balance
+              </div>
+              <p className="text-xl font-black sm:text-2xl">{fmtINR(wallet.cash)}</p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
+                <TrendingUp size={11} /> Total Earned
+              </div>
+              <p className="text-lg font-black text-neutral-800">{fmtINR(wallet.totalEarned)}</p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
+                <Gift size={11} /> Gift Cash
+              </div>
+              <p className="text-lg font-black text-neutral-800">{fmtINR(wallet.totalGiftCash)}</p>
+            </div>
+          </div>
+          {wallet.lastTransactionAt && (
+            <p className="mt-3 text-xs text-neutral-400">Last transaction: {fmtDateTime(wallet.lastTransactionAt)}</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─── withdrawal history card (host checkout requests) ──────────────────────────
+
+const CHECKOUT_STATUS_STYLES = {
+  pending:  'bg-amber-100  text-amber-700  border-amber-200',
+  approved: 'bg-green-100  text-green-700  border-green-200',
+  rejected: 'bg-red-100    text-red-700    border-red-200',
+};
+
+const CHECKOUT_STATUS_FILTERS = [
+  { value: '',         label: 'All'      },
+  { value: 'pending',  label: 'Pending'  },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
+// Matches the exact period values accepted by GET /api/admin/hosts/:hostId/checkout-history
+const CHECKOUT_PERIOD_FILTERS = [
+  { value: '',             label: 'All'        },
+  { value: 'today',        label: 'Today'      },
+  { value: 'yesterday',    label: 'Yesterday'  },
+  { value: 'thisWeek',     label: 'This Week'  },
+  { value: 'thisMonth',    label: 'This Month' },
+  { value: 'last6Months',  label: 'Last 6mo'   },
+];
+
+const WithdrawalHistoryCard = ({ hostId }) => {
+  const [requests, setRequests] = useState([]);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState(null);
+  const [page,     setPage]     = useState(1);
+  const [pages,    setPages]    = useState(1);
+  const [total,    setTotal]    = useState(0);
+  const [status,   setStatus]   = useState('');
+  const [period,   setPeriod]   = useState('');
+
+  const fetchHistory = useCallback(async (targetPage, targetStatus, targetPeriod) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = { page: targetPage, limit: 20 };
+      if (targetStatus) params.status = targetStatus;
+      if (targetPeriod) params.period = targetPeriod;
+      const { data } = await api.get(`/api/admin/hosts/${hostId}/checkout-history`, { params });
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      const pg   = data?.pagination ?? {};
+      setRequests(rows);
+      setPages(pg.pages ?? 1);
+      setTotal(pg.total ?? rows.length);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load withdrawal history');
+    } finally {
+      setLoading(false);
+    }
+  }, [hostId]);
+
+  useEffect(() => { fetchHistory(1, '', ''); }, [fetchHistory]);
+
+  const onStatusChange = (s) => { setStatus(s); setPage(1); fetchHistory(1, s, period); };
+  const onPeriodChange = (p) => { setPeriod(p); setPage(1); fetchHistory(1, status, p); };
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white">
+
+      {/* Header */}
+      <div className="flex flex-col gap-3 border-b border-neutral-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <Banknote size={15} className="text-neutral-400" />
+          <p className="text-sm font-semibold text-neutral-800">Withdrawal History</p>
+          {total > 0 && (
+            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">{total}</span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Status — segmented control */}
+          <div className="flex flex-wrap gap-0.5 rounded-lg border border-neutral-200 p-0.5">
+            {CHECKOUT_STATUS_FILTERS.map(({ value, label }) => (
+              <button key={value} onClick={() => onStatusChange(value)}
+                className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
+                  status === value
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Period — dropdown (too many options for a pill row) */}
+          <select
+            value={period}
+            onChange={(e) => onPeriodChange(e.target.value)}
+            className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+          >
+            {CHECKOUT_PERIOD_FILTERS.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+
+          <button
+            onClick={() => fetchHistory(page, status, period)}
+            disabled={loading}
+            title="Refresh"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-neutral-400">
+          <Loader2 size={18} className="animate-spin" /> Loading withdrawal requests…
+        </div>
+      ) : error ? (
+        <div className="m-4 flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+          <span className="flex items-center gap-2"><AlertCircle size={14} />{error}</span>
+          <button onClick={() => fetchHistory(page, status, period)}
+            className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2 py-1 text-xs font-medium">
+            Retry
+          </button>
+        </div>
+      ) : requests.length === 0 ? (
+        <div className="py-12 text-center">
+          <Banknote size={30} className="mx-auto mb-2 text-neutral-200" />
+          <p className="text-sm font-medium text-neutral-400">
+            {status ? `No ${status} withdrawal requests` : 'No withdrawal requests yet'}
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px]">
+            <thead>
+              <tr className="border-b border-neutral-100">
+                {['Gross', 'Platform Fee', 'GST', 'Net Amount', 'Status', 'Processed By', 'Date'].map((h) => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-50">
+              {requests.map((r) => {
+                const st = (r.status || '').toLowerCase();
+                return (
+                  <tr key={r._id} className="transition hover:bg-neutral-50">
+                    <td className="px-4 py-3 text-sm font-medium text-neutral-800 sm:px-5">{fmtINR(r.grossAmount)}</td>
+                    <td className="px-4 py-3 text-xs text-neutral-500 sm:px-5">
+                      {fmtINR(r.platformFeeAmount)} <span className="text-neutral-300">({r.platformFeePercent ?? 0}%)</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-neutral-500 sm:px-5">
+                      {fmtINR(r.gstAmount)} <span className="text-neutral-300">({r.gstPercent ?? 0}%)</span>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-bold text-emerald-700 sm:px-5">{fmtINR(r.netAmount)}</td>
+                    <td className="px-4 py-3 sm:px-5">
+                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${CHECKOUT_STATUS_STYLES[st] ?? 'bg-neutral-100 text-neutral-600 border-neutral-200'}`}>
+                        {st || '—'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-neutral-500 sm:px-5">
+                      {r.processedBy?.username
+                        ? <span>@{r.processedBy.username}</span>
+                        : <span className="text-neutral-300">—</span>}
+                      {r.processedAt && <p className="text-[10px] text-neutral-300">{fmtDateTime(r.processedAt)}</p>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-neutral-500 sm:px-5">{fmtDateTime(r.createdAt)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {!loading && !error && pages > 1 && (
+        <div className="flex items-center justify-between border-t border-neutral-100 px-5 py-3">
+          <p className="text-xs text-neutral-400">Page {page} of {pages} · {total} total</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { const n = Math.max(1, page - 1); setPage(n); fetchHistory(n, status, period); }}
+              disabled={page <= 1}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:opacity-40"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-xs text-neutral-500">{page} / {pages}</span>
+            <button
+              onClick={() => { const n = Math.min(pages, page + 1); setPage(n); fetchHistory(n, status, period); }}
+              disabled={page >= pages}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:opacity-40"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── host KYC details card (view + inline approve/reject) ──────────────────────
+
+const KYC_STATUS_STYLES = {
+  pending:  'bg-amber-100 text-amber-700',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
+};
+
+const ImageLink = ({ label, url }) => (
+  <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-neutral-400">{label}</p>
+    {url ? (
+      <button
+        type="button"
+        onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+        className="group relative block h-28 w-full overflow-hidden rounded-lg border border-neutral-200"
+      >
+        <img src={url} alt={label} className="h-full w-full object-cover transition group-hover:opacity-80" />
+        <span className="absolute bottom-1 right-1 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+          <ExternalLink size={10} /> View
+        </span>
+      </button>
+    ) : (
+      <div className="flex h-28 w-full items-center justify-center rounded-lg border border-dashed border-neutral-200 text-neutral-300">
+        <ImageOff size={20} />
+      </div>
+    )}
+  </div>
+);
+
+const HostKycDetailsCard = ({ userId }) => {
+  const [kyc, setKyc]           = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+  const [notFound, setNotFound] = useState(false);
+
+  const [actionMode, setActionMode]   = useState(null); // 'approve' | 'reject'
+  const [note, setNote]               = useState('');
+  const [actionBusy, setActionBusy]   = useState(false);
+  const [actionError, setActionError] = useState(null);
+
+  const loadKyc = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setNotFound(false);
+    try {
+      const { data } = await api.get(`/api/admin/kyc/${userId}`);
+      setKyc(data?.data ?? null);
+    } catch (err) {
+      if (err.response?.status === 404) setNotFound(true);
+      else setError(err.response?.data?.message || 'Failed to load KYC submission');
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => { loadKyc(); }, [loadKyc]);
+
+  const startAction  = (mode) => { setActionMode(mode); setNote(''); setActionError(null); };
+  const cancelAction = () => { setActionMode(null); setNote(''); setActionError(null); };
+
+  const submitAction = async () => {
+    if (actionMode === 'reject' && !note.trim()) {
+      setActionError('A note is required to reject a submission');
+      return;
+    }
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const { data } = await api.patch(`/api/admin/kyc/${kyc._id}/${actionMode}`, { note: note.trim() });
+      setKyc((prev) => ({ ...prev, ...(data?.data ?? {}) }));
+      cancelAction();
+    } catch (err) {
+      setActionError(err.response?.data?.message || `Failed to ${actionMode} submission`);
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+        <Loader2 size={20} className="animate-spin" /> Loading KYC submission…
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div className="py-16 text-center">
+        <IdCard size={36} className="mx-auto mb-3 text-neutral-200" />
+        <p className="text-sm font-medium text-neutral-400">No KYC submission found for this host</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="m-4 flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+        <span className="flex items-center gap-2"><AlertCircle size={14} />{error}</span>
+        <button onClick={loadKyc} className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2 py-1 text-xs font-medium">
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!kyc) return null;
+
+  return (
+    <div className="space-y-4">
+
+      {/* Status header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-5">
+        <div className="flex items-center gap-3">
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${KYC_STATUS_STYLES[kyc.status] || 'bg-neutral-100 text-neutral-600'}`}>
+            {kyc.status || '—'}
+          </span>
+          <p className="text-xs text-neutral-400">Submitted {fmtDateTime(kyc.createdAt)}</p>
+        </div>
+        {kyc.status === 'pending' && !actionMode && (
+          <div className="flex gap-2">
+            <button onClick={() => startAction('approve')}
+              className="flex items-center gap-1.5 rounded-lg border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 transition hover:bg-green-50">
+              <CheckCircle size={13} /> Approve
+            </button>
+            <button onClick={() => startAction('reject')}
+              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50">
+              <Ban size={13} /> Reject
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Action panel */}
+      {actionMode && (
+        <div className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-5">
+          <p className="text-sm font-semibold capitalize">{actionMode} this submission</p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-500">
+              Note {actionMode === 'reject' && <span className="text-red-500">(required)</span>}
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              placeholder={actionMode === 'approve' ? 'All documents verified' : 'Aadhaar back image is blurry, please re-upload'}
+              className="w-full resize-none rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+            />
+          </div>
+          {actionError && (
+            <p className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+              <AlertCircle size={12} /> {actionError}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button onClick={cancelAction}
+              className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50">
+              Cancel
+            </button>
+            <button onClick={submitAction} disabled={actionBusy}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white transition disabled:opacity-50 ${
+                actionMode === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+              }`}>
+              {actionBusy && <Loader2 size={13} className="animate-spin" />}
+              {actionBusy ? 'Submitting…' : `Confirm ${actionMode === 'approve' ? 'Approval' : 'Rejection'}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {kyc.adminNote && (
+        <p className="rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+          <span className="font-semibold text-neutral-700">Admin note: </span>{kyc.adminNote}
+        </p>
+      )}
+
+      {/* PAN */}
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          <CreditCard size={12} /> PAN Details
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:col-span-2">
+            <div>
+              <p className="text-xs text-neutral-400">Number</p>
+              <p className="font-mono text-sm font-medium">{kyc.pan?.number || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-400">Name as per PAN</p>
+              <p className="text-sm font-medium">{kyc.pan?.nameAsPerPan || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-400">Date of Birth</p>
+              <p className="text-sm font-medium">{fmtDate(kyc.pan?.dob)}</p>
+            </div>
+          </div>
+          <ImageLink label="PAN Image" url={kyc.pan?.imageUrl} />
+        </div>
+      </div>
+
+      {/* Aadhaar */}
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          <IdCard size={12} /> Aadhaar
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ImageLink label="Front" url={kyc.aadhaar?.frontImageUrl} />
+          <ImageLink label="Back"  url={kyc.aadhaar?.backImageUrl} />
+        </div>
+      </div>
+
+      {/* Bank */}
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          <Landmark size={12} /> Bank Details
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <p className="text-xs text-neutral-400">Account Holder</p>
+            <p className="text-sm font-medium">{kyc.bank?.accountHolderName || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-neutral-400">Account Number</p>
+            <p className="font-mono text-sm font-medium">{kyc.bank?.accountNumber || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-neutral-400">Bank Name</p>
+            <p className="text-sm font-medium">{kyc.bank?.bankName || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-neutral-400">IFSC Code</p>
+            <p className="font-mono text-sm font-medium">{kyc.bank?.ifscCode || '—'}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Review meta */}
+      {(kyc.reviewedBy || kyc.reviewedAt) && (
+        <p className="text-xs text-neutral-400">
+          Reviewed {fmtDateTime(kyc.reviewedAt)}{kyc.reviewedBy && ` by ${kyc.reviewedBy}`}
+        </p>
+      )}
+    </div>
+  );
+};
+
 // ─── user detail page ─────────────────────────────────────────────────────────
 
-const DETAIL_TABS = [
+const USER_DETAIL_TABS = [
   { id: 'payments', label: 'Payments', Icon: Receipt  },
   { id: 'calls',    label: 'Calls',    Icon: PhoneCall },
 ];
 
+const HOST_DETAIL_TABS = [
+  { id: 'wallet', label: 'Wallet',      Icon: Wallet  },
+  { id: 'calls',  label: 'Calls',       Icon: PhoneCall },
+  { id: 'kyc',    label: 'KYC Details', Icon: IdCard  },
+];
+
+const USER_DTAB_IDS = new Set(USER_DETAIL_TABS.map((t) => t.id));
+const HOST_DTAB_IDS = new Set(HOST_DETAIL_TABS.map((t) => t.id));
+
 const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelete, onPromote, promotingId }) => {
+  const isHostDetail = activeTab === 'hosts';
   const canPromote  = activeTab === 'users' && user.gender === 'female' && user.role === 'user';
   const isPromoting = promotingId === user._id;
   const [copied, setCopied] = useState(false);
@@ -1319,11 +1953,11 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
         </div>
       </div>
 
-      {/* ── Payments / Calls tabs ──────────────────────────────────────────── */}
+      {/* ── Detail tabs ──────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
         {/* Tab bar */}
         <div className="flex items-center gap-1 border-b border-neutral-100 px-4 pt-3 pb-0 sm:px-5">
-          {DETAIL_TABS.map(({ id, label, Icon }) => (
+          {(isHostDetail ? HOST_DETAIL_TABS : USER_DETAIL_TABS).map(({ id, label, Icon }) => (
             <button
               key={id}
               onClick={() => onDtab(id)}
@@ -1340,13 +1974,28 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
         </div>
 
         {/* Tab content */}
-        {dtab === 'payments' ? (
-          <div className="space-y-4 p-4 sm:p-5">
-            <WalletCard userId={user._id} />
-            <PaymentHistoryCard userId={user._id} />
-          </div>
+        {isHostDetail ? (
+          dtab === 'wallet' ? (
+            <div className="space-y-4 p-4 sm:p-5">
+              <HostWalletCard hostId={user._id} />
+              <WithdrawalHistoryCard hostId={user._id} />
+            </div>
+          ) : dtab === 'kyc' ? (
+            <div className="p-4 sm:p-5">
+              <HostKycDetailsCard userId={user._id} />
+            </div>
+          ) : (
+            <CallHistoryCard userId={user._id} role="host" />
+          )
         ) : (
-          <CallHistoryCard userId={user._id} role={activeTab === 'hosts' ? 'host' : 'user'} />
+          dtab === 'payments' ? (
+            <div className="space-y-4 p-4 sm:p-5">
+              <WalletCard userId={user._id} />
+              <PaymentHistoryCard userId={user._id} />
+            </div>
+          ) : (
+            <CallHistoryCard userId={user._id} role="user" />
+          )
         )}
       </div>
     </div>
@@ -1378,7 +2027,11 @@ const UserManagementSection = () => {
   // all URL-persisted state — one hook, one source of truth
   const activeTab  = searchParams.get('usersTab') === 'hosts' ? 'hosts' : 'users';
   const selectedId = searchParams.get('userId') || null;
-  const dtab       = searchParams.get('dtab') === 'calls' ? 'calls' : 'payments';
+
+  const defaultDtab  = activeTab === 'hosts' ? 'wallet' : 'payments';
+  const allowedDtabs = activeTab === 'hosts' ? HOST_DTAB_IDS : USER_DTAB_IDS;
+  const rawDtab       = searchParams.get('dtab');
+  const dtab          = allowedDtabs.has(rawDtab) ? rawDtab : defaultDtab;
 
   const setActiveTab = useCallback((tab) => {
     setSearchParams((prev) => {
@@ -1408,7 +2061,8 @@ const UserManagementSection = () => {
   const setDtab = useCallback((tab) => {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
-      if (tab === 'calls') p.set('dtab', 'calls'); else p.delete('dtab');
+      const def = (prev.get('usersTab') === 'hosts') ? 'wallet' : 'payments';
+      if (tab === def) p.delete('dtab'); else p.set('dtab', tab);
       return p;
     }, { replace: true });
   }, [setSearchParams]);

@@ -50,6 +50,16 @@ const TYPE_OPTIONS = [
   { value: 'video', label: 'Video'     },
 ];
 
+// Matches the period buckets accepted by GET /api/admin/calls (adminController.callDateRange)
+const PERIOD_OPTIONS = [
+  { value: '',            label: 'All Time'      },
+  { value: 'today',       label: 'Today'         },
+  { value: 'thisWeek',    label: 'This Week'     },
+  { value: 'thisMonth',   label: 'This Month'    },
+  { value: 'last6Months', label: 'Last 6 Months' },
+  { value: 'custom',      label: 'Custom Range'  },
+];
+
 const SECTION_TABS = [
   { id: 'calls',  label: 'Calls',       Icon: PhoneCall },
   { id: 'config', label: 'Call Config', Icon: Settings  },
@@ -67,6 +77,9 @@ const CallsTab = () => {
   const [debouncedSearch, setDs] = useState('');
   const [status, setStatus]      = useState('');
   const [callType, setCallType]  = useState('');
+  const [period, setPeriod]      = useState('');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo,   setCustomTo]   = useState('');
 
   const [page, setPage]   = useState(1);
   const [pages, setPages] = useState(1);
@@ -84,6 +97,9 @@ const CallsTab = () => {
           ...(debouncedSearch && { search: debouncedSearch }),
           ...(status   && { status }),
           ...(callType && { callType }),
+          ...(period && period !== 'custom' && { period }),
+          ...(period === 'custom' && customFrom && { startDate: new Date(customFrom).toISOString() }),
+          ...(period === 'custom' && customTo   && { endDate: new Date(customTo + 'T23:59:59').toISOString() }),
         },
       });
       const list       = Array.isArray(data?.data) ? data.data : [];
@@ -96,7 +112,7 @@ const CallsTab = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch, status, callType]);
+  }, [page, debouncedSearch, status, callType, period, customFrom, customTo]);
 
   useEffect(() => { fetchCalls(); }, [fetchCalls]);
 
@@ -106,6 +122,13 @@ const CallsTab = () => {
   }, [search]);
 
   const onFilterChange = (setter) => (e) => { setter(e.target.value); setPage(1); };
+
+  const onPeriodChange = (e) => {
+    const value = e.target.value;
+    setPeriod(value);
+    setPage(1);
+    if (value !== 'custom') { setCustomFrom(''); setCustomTo(''); }
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -132,39 +155,77 @@ const CallsTab = () => {
       <div className="rounded-2xl border border-neutral-200 bg-white">
 
         {/* Toolbar */}
-        <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input
-              type="text"
-              placeholder="Search by username or phone…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
-            />
+        <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 sm:max-w-xs">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="text"
+                placeholder="Search by username or phone…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={status}
+                onChange={onFilterChange(setStatus)}
+                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              >
+                {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <select
+                value={callType}
+                onChange={onFilterChange(setCallType)}
+                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              >
+                {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <select
+                value={period}
+                onChange={onPeriodChange}
+                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              >
+                {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <button
+                onClick={fetchCalls}
+                className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+              >
+                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+              </button>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={status}
-              onChange={onFilterChange(setStatus)}
-              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
-            >
-              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <select
-              value={callType}
-              onChange={onFilterChange(setCallType)}
-              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
-            >
-              {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <button
-              onClick={fetchCalls}
-              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
-            >
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
-            </button>
-          </div>
+
+          {/* Custom date range — shown only when "Custom Range" is selected */}
+          {period === 'custom' && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 sm:justify-end">
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || undefined}
+                onChange={(e) => { setCustomFrom(e.target.value); setPage(1); }}
+                className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+              />
+              <span className="text-xs text-neutral-400">→</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={(e) => { setCustomTo(e.target.value); setPage(1); }}
+                className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+              />
+              {(customFrom || customTo) && (
+                <button
+                  onClick={() => { setCustomFrom(''); setCustomTo(''); setPage(1); }}
+                  className="text-xs text-neutral-400 hover:text-neutral-700 underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {error && (
@@ -182,7 +243,7 @@ const CallsTab = () => {
           <div className="py-16 text-center">
             <PhoneCall size={36} className="mx-auto mb-3 text-neutral-200" />
             <p className="text-sm font-medium text-neutral-400">
-              {search || status || callType ? 'No calls match your filters' : 'No calls yet'}
+              {search || status || callType || period ? 'No calls match your filters' : 'No calls yet'}
             </p>
           </div>
         ) : (

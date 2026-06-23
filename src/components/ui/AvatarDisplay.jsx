@@ -1,4 +1,17 @@
 import React, { useState } from 'react';
+import api from '../../services/api';
+
+// Some avatar values come back as a server-relative path (e.g. "/uploads/avatar.jpg")
+// rather than an absolute URL — resolve those against the API origin so the <img>
+// doesn't try to load them relative to the dashboard's own domain and 404 silently.
+const resolveAvatarSrc = (src) => {
+  if (!src) return null;
+  const trimmed = src.trim();
+  if (!trimmed) return null;
+  if (/^(https?:)?\/\//i.test(trimmed) || trimmed.startsWith('data:')) return trimmed;
+  const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+  return `${base}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+};
 
 const AvatarDisplay = React.memo(({ src, name, size = 'md' }) => {
   const [imgError, setImgError] = useState(false);
@@ -15,11 +28,12 @@ const AvatarDisplay = React.memo(({ src, name, size = 'md' }) => {
     </div>
   );
 
-  if (!src || imgError) return initials;
+  const resolvedSrc = resolveAvatarSrc(src);
+  if (!resolvedSrc || imgError) return initials;
 
   return (
     <img
-      src={src}
+      src={resolvedSrc}
       alt={name || 'avatar'}
       loading="lazy"
       onError={() => setImgError(true)}

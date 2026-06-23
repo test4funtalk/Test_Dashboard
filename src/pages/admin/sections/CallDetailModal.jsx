@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, Loader2, AlertCircle, Phone, Video, Clock, Coins,
-  Gift, Star, Calendar, MessageSquare,
+  Gift, Star, Calendar, MessageSquare, Wallet,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -14,6 +14,15 @@ const fmtDuration = (secs) => {
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
+};
+
+const fmtNum = (n) => (n == null ? '—' : n.toLocaleString());
+
+const fmtDelta = (start, end) => {
+  if (start == null || end == null) return null;
+  const delta = end - start;
+  const sign = delta > 0 ? '+' : '';
+  return `${sign}${delta.toLocaleString()}`;
 };
 
 const CALL_STATUS_STYLES = {
@@ -69,6 +78,7 @@ const CallDetailModal = ({ callId, onClose }) => {
   const TypeIcon = call?.callType === 'video' ? Video : Phone;
   const hostRating = call?.ratings?.hostRating;
   const userRating = call?.ratings?.userRating;
+  const walletSnapshot = call?.walletSnapshot;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
@@ -127,6 +137,46 @@ const CallDetailModal = ({ callId, onClose }) => {
                 <div><p className="text-xs text-neutral-400">Coins Deducted</p><p className="font-medium">{call.billing?.totalCoinsDeducted ?? 0}</p></div>
                 <div><p className="text-xs text-neutral-400">Cash Earned</p><p className="font-medium">{call.billing?.totalCashEarned ?? 0}</p></div>
               </div>
+            </div>
+
+            {/* Wallet Snapshot */}
+            <div className="rounded-2xl border border-neutral-100 p-4">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                <Wallet size={12} /> Wallet Snapshot
+              </p>
+              {!walletSnapshot || (
+                walletSnapshot.callerCoinsAtStart == null &&
+                walletSnapshot.hostCashAtStart == null &&
+                walletSnapshot.callerCoinsAtEnd == null &&
+                walletSnapshot.hostCashAtEnd == null
+              ) ? (
+                <p className="py-2 text-sm text-neutral-400">No wallet snapshot recorded for this call</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2.5">
+                    <p className="text-xs text-neutral-400">Caller Coins</p>
+                    <p className="mt-0.5 text-sm font-semibold text-neutral-800">
+                      {fmtNum(walletSnapshot.callerCoinsAtStart)} → {fmtNum(walletSnapshot.callerCoinsAtEnd)}
+                    </p>
+                    {fmtDelta(walletSnapshot.callerCoinsAtStart, walletSnapshot.callerCoinsAtEnd) && (
+                      <p className="text-xs text-neutral-400">
+                        {fmtDelta(walletSnapshot.callerCoinsAtStart, walletSnapshot.callerCoinsAtEnd)} coins
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2.5">
+                    <p className="text-xs text-neutral-400">Host Cash</p>
+                    <p className="mt-0.5 text-sm font-semibold text-neutral-800">
+                      {fmtNum(walletSnapshot.hostCashAtStart)} → {fmtNum(walletSnapshot.hostCashAtEnd)}
+                    </p>
+                    {fmtDelta(walletSnapshot.hostCashAtStart, walletSnapshot.hostCashAtEnd) && (
+                      <p className="text-xs text-neutral-400">
+                        {fmtDelta(walletSnapshot.hostCashAtStart, walletSnapshot.hostCashAtEnd)} cash
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Gifts */}

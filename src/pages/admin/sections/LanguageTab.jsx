@@ -6,6 +6,7 @@ import {
 import api from '../../../services/api';
 
 const getLangName = (l) => l?.name ?? l?.languageName ?? l?.language ?? String(l);
+const toLowerLetters = (val) => val.toLowerCase().replace(/[^a-z\s]/g, '');
 
 // ─── main section ─────────────────────────────────────────────────────────────
 
@@ -244,11 +245,12 @@ const LanguageTab = () => {
                 <input
                   type="text"
                   value={addName}
-                  onChange={(e) => setAddName(e.target.value)}
-                  placeholder="e.g. Tamil, Hindi, French…"
+                  onChange={(e) => setAddName(toLowerLetters(e.target.value))}
+                  placeholder="e.g. tamil, hindi, french…"
                   autoFocus
                   className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
                 />
+                <p className="mt-1.5 text-xs text-neutral-400">Lowercase letters only.</p>
               </div>
               <div className="flex gap-3">
                 <button
@@ -300,10 +302,11 @@ const LanguageTab = () => {
                 <input
                   type="text"
                   value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  onChange={(e) => setEditName(toLowerLetters(e.target.value))}
                   autoFocus
                   className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
                 />
+                <p className="mt-1.5 text-xs text-neutral-400">Lowercase letters only.</p>
               </div>
               <div className="flex gap-3">
                 <button
