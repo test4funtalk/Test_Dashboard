@@ -25,6 +25,15 @@ const fmtDelta = (start, end) => {
   return `${sign}${delta.toLocaleString()}`;
 };
 
+// Wallet Snapshot is the raw balance before/after the call, so its delta includes
+// gift spend/earnings on top of per-second billing — the two are tracked as separate
+// ledgers (call.billing vs call.gifts) that both move the same wallet. Without this
+// breakdown the delta looks like a billing mismatch whenever a gift was sent mid-call.
+const fmtBreakdown = (billingAmt, giftAmt) => {
+  if (!giftAmt) return null;
+  return `${fmtNum(billingAmt ?? 0)} call + ${fmtNum(giftAmt)} gifts`;
+};
+
 const CALL_STATUS_STYLES = {
   ended:    'bg-neutral-100 text-neutral-600',
   missed:   'bg-red-100 text-red-600',
@@ -161,6 +170,9 @@ const CallDetailModal = ({ callId, onClose }) => {
                     {fmtDelta(walletSnapshot.callerCoinsAtStart, walletSnapshot.callerCoinsAtEnd) && (
                       <p className="text-xs text-neutral-400">
                         {fmtDelta(walletSnapshot.callerCoinsAtStart, walletSnapshot.callerCoinsAtEnd)} coins
+                        {fmtBreakdown(call.billing?.totalCoinsDeducted, call.gifts?.totalGiftCoins) && (
+                          <> ({fmtBreakdown(call.billing?.totalCoinsDeducted, call.gifts?.totalGiftCoins)})</>
+                        )}
                       </p>
                     )}
                   </div>
@@ -172,6 +184,9 @@ const CallDetailModal = ({ callId, onClose }) => {
                     {fmtDelta(walletSnapshot.hostCashAtStart, walletSnapshot.hostCashAtEnd) && (
                       <p className="text-xs text-neutral-400">
                         {fmtDelta(walletSnapshot.hostCashAtStart, walletSnapshot.hostCashAtEnd)} cash
+                        {fmtBreakdown(call.billing?.totalCashEarned, call.gifts?.totalGiftCash) && (
+                          <> ({fmtBreakdown(call.billing?.totalCashEarned, call.gifts?.totalGiftCash)})</>
+                        )}
                       </p>
                     )}
                   </div>
