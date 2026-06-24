@@ -23,25 +23,25 @@ import SettingsSection from './sections/SettingsSection';
 
 const NAV = [
   { id: 'overview',  label: 'Overview',            Icon: LayoutDashboard },
-  { id: 'admins',    label: 'Admin Management',     Icon: Shield          },
+  { id: 'calls',     label: 'Call Management',      Icon: PhoneCall       },
   { id: 'users',     label: 'User Management',      Icon: Users           },
   { id: 'payments',  label: 'Payment Management',   Icon: CreditCard      },
+  { id: 'kyc',       label: 'KYC Management',       Icon: IdCard          },
   { id: 'packages',  label: 'Package Management',   Icon: Package         },
   { id: 'ads',       label: 'Ads Management',       Icon: Megaphone       },
-  { id: 'calls',     label: 'Call Management',      Icon: PhoneCall       },
-  { id: 'kyc',       label: 'KYC Management',       Icon: IdCard          },
   { id: 'profile',   label: 'Profile Management',   Icon: Languages       },
+  { id: 'admins',    label: 'Admin Management',     Icon: Shield          },
   { id: 'settings',  label: 'Settings',             Icon: Settings        },
 ];
 
 const PAGE_META = {
   overview:  { title: 'Overview',            sub: 'Your profile and account details'           },
-  admins:    { title: 'Admin Management',    sub: 'Create, view and manage admin accounts'     },
+  calls:     { title: 'Call Management',     sub: 'Browse and inspect all platform calls'      },
   users:     { title: 'User Management',     sub: 'View and manage platform users'             },
+  admins:    { title: 'Admin Management',    sub: 'Create, view and manage admin accounts'     },
   payments:  { title: 'Payment Management',  sub: 'Track transactions and revenue'             },
   packages:  { title: 'Package Management',  sub: 'Manage subscription packages and plans'    },
   ads:       { title: 'Ads Management',      sub: 'Monitor and control ad campaigns'           },
-  calls:     { title: 'Call Management',     sub: 'Browse and inspect all platform calls'      },
   kyc:       { title: 'KYC Management',      sub: 'Review and approve host identity submissions' },
   profile:   { title: 'Profile Management',  sub: 'Manage platform languages and tags'         },
   settings:  { title: 'Settings',            sub: 'Manage your account settings'               },
@@ -49,14 +49,14 @@ const PAGE_META = {
 
 const SECTION_MAP = {
   overview:  OverviewSection,
-  admins:    AdminManagementSection,
+  calls:     CallManagementSection,
   users:     UserManagementSection,
   payments:  PaymentManagementSection,
+  kyc:       KycManagementSection,
   packages:  PackageManagementSection,
   ads:       AdsManagementSection,
-  calls:     CallManagementSection,
-  kyc:       KycManagementSection,
   profile:   ProfileManagementSection,
+  admins:    AdminManagementSection,
   settings:  SettingsSection,
 };
 

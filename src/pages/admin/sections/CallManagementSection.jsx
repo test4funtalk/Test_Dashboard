@@ -123,6 +123,13 @@ const CallsTab = () => {
 
   const onFilterChange = (setter) => (e) => { setter(e.target.value); setPage(1); };
 
+  const pageNumbers = () => {
+    if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
+    if (page <= 3) return [1, 2, 3, 4, 5];
+    if (page >= pages - 2) return [pages - 4, pages - 3, pages - 2, pages - 1, pages];
+    return [page - 2, page - 1, page, page + 1, page + 2];
+  };
+
   const onPeriodChange = (e) => {
     const value = e.target.value;
     setPeriod(value);
@@ -339,11 +346,24 @@ const CallsTab = () => {
         {!loading && calls.length > 0 && pages > 1 && (
           <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 sm:px-6">
             <p className="text-xs text-neutral-400">{total} total · page {page} of {pages}</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
                 <ChevronLeft size={14} />
               </button>
+              {pageNumbers().map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setPage(n)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium transition ${
+                    n === page
+                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                      : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
               <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
                 <ChevronRight size={14} />
