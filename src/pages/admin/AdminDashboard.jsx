@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
-  Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy,
+  Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy, Bell,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
@@ -14,6 +14,7 @@ import UserManagementSection from './sections/UserManagementSection';
 import PaymentManagementSection from './sections/PaymentManagementSection';
 import PackageManagementSection from './sections/PackageManagementSection';
 import AdsManagementSection from './sections/AdsManagementSection';
+import AdNotificationManagementSection from './sections/AdNotificationManagementSection';
 import CallManagementSection from './sections/CallManagementSection';
 import KycManagementSection from './sections/KycManagementSection';
 import CheckoutManagementSection from './sections/CheckoutManagementSection';

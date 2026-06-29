@@ -7,6 +7,7 @@ import {
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
 import { getLanguages } from '../../../services/languageService';
+import LeaderboardAside from './LeaderboardAside';
 
 const fmtINR = (n) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 const fmtNum = (n) => Number(n ?? 0).toLocaleString('en-IN');
@@ -93,6 +94,8 @@ const TopHostsTab = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+
+      <LeaderboardAside />
 
       {/* Filters bar */}
       <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
