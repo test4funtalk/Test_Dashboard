@@ -3,6 +3,7 @@ import {
   Trophy, RefreshCw, Loader2, AlertCircle, Gift, PhoneCall,
   Coins, Clock, Banknote, TrendingUp, BarChart3, Star,
   ChevronLeft, ChevronRight, MessageSquare, Video, Phone,
+  Search, X, Wifi, WifiOff, Eye, History,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -29,9 +30,10 @@ const fmtDateTime = (d) =>
 const getLangName = (l) => l?.name ?? l?.languageName ?? l?.language ?? String(l);
 
 const SECTION_TABS = [
-  { id: 'hosts',   label: 'Top Hosts',     Icon: Trophy   },
-  { id: 'stats',   label: 'Platform Stats', Icon: BarChart3 },
-  { id: 'ratings', label: 'Ratings',        Icon: Star     },
+  { id: 'hosts',      label: 'Top Hosts',      Icon: Trophy    },
+  { id: 'stats',      label: 'Platform Stats', Icon: BarChart3 },
+  { id: 'ratings',    label: 'Ratings',        Icon: Star      },
+  { id: 'onlineTime', label: 'Host Online Time', Icon: Clock   },
 ];
 
 // ─── top hosts tab ─────────────────────────────────────────────────────────────
@@ -624,6 +626,365 @@ const RatingsTab = () => {
   );
 };
 
+// ─── host online time tab ───────────────────────────────────────────────────────
+
+const ONLINE_TIME_PERIODS = [
+  { id: 'today',     label: 'Today'      },
+  { id: 'thisweek',  label: 'This Week'  },
+  { id: 'thismonth', label: 'This Month' },
+  { id: 'all',       label: 'All Time'   },
+];
+
+const StatusDot = ({ status, lastSeen }) => (
+  <span className="flex items-center gap-1.5 text-xs">
+    {status === 'online' ? (
+      <span className="flex items-center gap-1 font-medium text-green-600"><Wifi size={11} /> Online</span>
+    ) : (
+      <span className="flex items-center gap-1 text-neutral-400"><WifiOff size={11} /> {fmtDateTime(lastSeen)}</span>
+    )}
+  </span>
+);
+
+const MotherTongueChips = ({ tongues }) => (
+  !tongues?.length ? <span className="text-neutral-300">—</span> : (
+    <div className="flex flex-wrap gap-1">
+      {tongues.slice(0, 3).map((t) => (
+        <span key={t} className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">{t}</span>
+      ))}
+      {tongues.length > 3 && <span className="text-[10px] text-neutral-300">+{tongues.length - 3}</span>}
+    </div>
+  )
+);
+
+const HostOnlineTimeDetailModal = ({ hostId, period, onClose }) => {
+  const [detail, setDetail]   = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDetail(null);
+    setLoading(true);
+    setError(null);
+    api.get(`/api/host-online-time/admin/host/${hostId}`, { params: { period } })
+      .then(({ data }) => { if (!cancelled) setDetail(data?.data ?? null); })
+      .catch((err) => { if (!cancelled) setError(err.response?.data?.message || 'Failed to load host online time'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [hostId, period]);
+
+  const host = detail?.host;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="flex max-h-[90vh] w-full flex-col rounded-t-3xl border border-neutral-200 bg-white shadow-2xl sm:max-w-2xl sm:rounded-2xl">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-neutral-100 px-5 py-4">
+          <h3 className="text-base font-bold">Host Online Time</h3>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-neutral-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+              <Loader2 size={20} className="animate-spin" /> Loading…
+            </div>
+          ) : error ? (
+            <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+              <AlertCircle size={14} /> {error}
+            </div>
+          ) : detail && (
+            <div className="space-y-5">
+              {/* Host profile */}
+              <div className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3">
+                <AvatarDisplay src={host?.avatar} name={host?.username} size="lg" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-neutral-900">{host?.username || '—'}</p>
+                  <StatusDot status={host?.userCurrentStatus} lastSeen={host?.lastSeen} />
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-neutral-400">Member Since</p>
+                  <p className="text-xs font-medium text-neutral-600">{fmtDateTime(host?.createdAt)}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-neutral-400">Mother Tongue</p>
+                <MotherTongueChips tongues={host?.motherTongue} />
+              </div>
+
+              {/* Totals */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-neutral-900 p-3 text-white">
+                  <p className="text-lg font-black sm:text-xl">{detail.totalFormatted ?? '—'}</p>
+                  <p className="mt-0.5 text-xs opacity-70">Online Time</p>
+                </div>
+                <div className="rounded-xl border border-neutral-200 bg-white p-3">
+                  <p className="text-lg font-black text-neutral-800 sm:text-xl">{fmtNum(detail.sessionCount)}</p>
+                  <p className="mt-0.5 text-xs text-neutral-400">Sessions</p>
+                </div>
+                <div className="rounded-xl border border-neutral-200 bg-white p-3">
+                  <p className="text-lg font-black capitalize text-neutral-800 sm:text-xl">{detail.period ?? '—'}</p>
+                  <p className="mt-0.5 text-xs text-neutral-400">Period</p>
+                </div>
+              </div>
+
+              {/* Session history */}
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                  <History size={12} /> Session History
+                </p>
+                {detail.sessions?.length ? (
+                  <div className="overflow-hidden rounded-xl border border-neutral-100">
+                    <div className="max-h-80 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-neutral-50">
+                          <tr>
+                            {['Start', 'End', 'Duration', 'Status'].map((h) => (
+                              <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-50">
+                          {detail.sessions.map((s) => (
+                            <tr key={s._id}>
+                              <td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">{fmtDateTime(s.startTime)}</td>
+                              <td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">
+                                {s.endTime ? fmtDateTime(s.endTime) : <span className="text-green-600">—</span>}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">{fmtDuration(s.durationSeconds)}</td>
+                              <td className="px-3 py-2">
+                                {s.isActive ? (
+                                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">Active</span>
+                                ) : (
+                                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">Closed</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="rounded-xl border border-dashed border-neutral-200 px-3 py-6 text-center text-sm text-neutral-400">
+                    No sessions recorded for this period
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const HostOnlineTimeTab = () => {
+  const [hosts, setHosts]           = useState([]);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 0 });
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState(null);
+
+  const [period, setPeriod]         = useState('thismonth');
+  const [search, setSearch]         = useState('');
+  const [debouncedSearch, setDs]    = useState('');
+  const [page, setPage]             = useState(1);
+
+  const [viewHostId, setViewHostId] = useState(null);
+
+  const fetchHosts = useCallback(async (targetPage = 1) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/api/host-online-time/admin/all', {
+        params: { period, page: targetPage, limit: 20, ...(debouncedSearch && { search: debouncedSearch }) },
+      });
+      const d  = data?.data ?? {};
+      const pg = d.pagination ?? {};
+      setHosts(Array.isArray(d.hosts) ? d.hosts : []);
+      setPagination({
+        total: pg.total ?? 0,
+        page:  pg.page  ?? targetPage,
+        limit: pg.limit ?? 20,
+        pages: pg.pages ?? 1,
+      });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load host online time');
+    } finally {
+      setLoading(false);
+    }
+  }, [period, debouncedSearch]);
+
+  useEffect(() => { fetchHosts(1); setPage(1); }, [fetchHosts]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDs(search.trim()), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const onPage = (n) => { setPage(n); fetchHosts(n); };
+
+  const pageNumbers = () => {
+    const { pages } = pagination;
+    if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
+    if (page <= 3) return [1, 2, 3, 4, 5];
+    if (page >= pages - 2) return [pages - 4, pages - 3, pages - 2, pages - 1, pages];
+    return [page - 2, page - 1, page, page + 1, page + 2];
+  };
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+
+      {/* Filters bar */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <input
+            type="text"
+            placeholder="Search by username or phone…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
+            {ONLINE_TIME_PERIODS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPeriod(p.id)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  period === p.id ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:bg-neutral-200/60'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => fetchHosts(page)}
+            className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          <span className="flex items-center gap-2"><AlertCircle size={14} /> {error}</span>
+          <button onClick={() => fetchHosts(page)} className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-xs font-medium">Retry</button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-2xl font-black sm:text-3xl">{pagination.total}</p>
+            <Clock size={17} className="opacity-50" />
+          </div>
+          <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">Hosts Tracked</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white">
+        {loading && hosts.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+            <Loader2 size={20} className="animate-spin" /> Loading online time…
+          </div>
+        ) : hosts.length === 0 ? (
+          <div className="py-16 text-center">
+            <Clock size={36} className="mx-auto mb-3 text-neutral-200" />
+            <p className="text-sm font-medium text-neutral-400">
+              {search ? 'No hosts match your search' : 'No online time recorded for this period'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-sm">
+              <thead>
+                <tr className="border-b border-neutral-100">
+                  {['Rank', 'Host', 'Mother Tongue', 'Status', 'Online Time', 'Sessions', 'Actions'].map((h) => (
+                    <th key={h} className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5 ${h === 'Actions' ? 'text-right' : ''}`}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-50">
+                {hosts.map((entry, i) => {
+                  const h = entry.host;
+                  const rank = (pagination.page - 1) * pagination.limit + i + 1;
+                  return (
+                    <tr key={h?._id || i} className="transition-colors hover:bg-neutral-50/70">
+                      <td className="px-4 py-3 sm:px-5">
+                        <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                          RANK_STYLES[rank - 1] || 'bg-neutral-100 text-neutral-400'
+                        }`}>
+                          {rank}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 sm:px-5">
+                        <div className="flex items-center gap-2.5">
+                          <AvatarDisplay src={h?.avatar} name={h?.username} size="sm" />
+                          <p className="truncate font-medium text-neutral-900">{h?.username || '—'}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 sm:px-5"><MotherTongueChips tongues={h?.motherTongue} /></td>
+                      <td className="px-4 py-3 sm:px-5"><StatusDot status={h?.userCurrentStatus} lastSeen={h?.lastSeen} /></td>
+                      <td className="px-4 py-3 text-sm font-bold text-neutral-800 sm:px-5">{entry.totalFormatted}</td>
+                      <td className="px-4 py-3 text-sm text-neutral-600 sm:px-5">{fmtNum(entry.sessionCount)}</td>
+                      <td className="px-4 py-3 text-right sm:px-5">
+                        <button
+                          onClick={() => setViewHostId(h?._id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition hover:border-neutral-400 hover:bg-neutral-50"
+                        >
+                          <Eye size={12} /> View
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!loading && hosts.length > 0 && pagination.pages > 1 && (
+          <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 sm:px-6">
+            <p className="text-xs text-neutral-400">{pagination.total} total · page {pagination.page} of {pagination.pages}</p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => onPage(Math.max(1, pagination.page - 1))} disabled={pagination.page <= 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronLeft size={14} />
+              </button>
+              {pageNumbers().map((n) => (
+                <button key={n} onClick={() => onPage(n)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium transition ${
+                    n === pagination.page ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+                  }`}>
+                  {n}
+                </button>
+              ))}
+              <button onClick={() => onPage(Math.min(pagination.pages, pagination.page + 1))} disabled={pagination.page >= pagination.pages}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {viewHostId && (
+        <HostOnlineTimeDetailModal hostId={viewHostId} period={period} onClose={() => setViewHostId(null)} />
+      )}
+    </div>
+  );
+};
+
 // ─── main section ─────────────────────────────────────────────────────────────
 
 const LeaderboardSection = () => {
@@ -653,6 +1014,7 @@ const LeaderboardSection = () => {
       {tab === 'hosts'   && <TopHostsTab />}
       {tab === 'stats'   && <PlatformStatsTab />}
       {tab === 'ratings' && <RatingsTab />}
+      {tab === 'onlineTime' && <HostOnlineTimeTab />}
     </div>
   );
 };
