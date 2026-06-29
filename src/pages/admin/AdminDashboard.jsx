@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
-  Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy, Bell,
+  Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
@@ -14,7 +14,6 @@ import UserManagementSection from './sections/UserManagementSection';
 import PaymentManagementSection from './sections/PaymentManagementSection';
 import PackageManagementSection from './sections/PackageManagementSection';
 import AdsManagementSection from './sections/AdsManagementSection';
-import AdNotificationManagementSection from './sections/AdNotificationManagementSection';
 import CallManagementSection from './sections/CallManagementSection';
 import KycManagementSection from './sections/KycManagementSection';
 import CheckoutManagementSection from './sections/CheckoutManagementSection';
@@ -34,7 +33,6 @@ const NAV = [
   { id: 'kyc',       label: 'KYC Management',       Icon: IdCard          },
   { id: 'packages',  label: 'Package Management',   Icon: Package         },
   { id: 'ads',       label: 'Ads Management',       Icon: Megaphone       },
-  { id: 'ad-notifications', label: 'Ad Notifications', Icon: Bell         },
   { id: 'profile',   label: 'Profile Management',   Icon: Languages       },
   { id: 'admins',    label: 'Admin Management',     Icon: Shield          },
   { id: 'settings',  label: 'Settings',             Icon: Settings        },
@@ -50,7 +48,6 @@ const PAGE_META = {
   checkouts: { title: 'Checkout Management', sub: 'Review host withdrawal requests and payout config' },
   packages:  { title: 'Package Management',  sub: 'Manage subscription packages and plans'    },
   ads:       { title: 'Ads Management',      sub: 'Monitor and control ad campaigns'           },
-  'ad-notifications': { title: 'Ad Notifications', sub: 'Push text broadcasts to hosts or users' },
   kyc:       { title: 'KYC Management',      sub: 'Review and approve host identity submissions' },
   profile:   { title: 'Profile Management',  sub: 'Manage platform languages and tags'         },
   settings:  { title: 'Settings',            sub: 'Manage your account settings'               },
@@ -66,7 +63,6 @@ const SECTION_MAP = {
   kyc:       KycManagementSection,
   packages:  PackageManagementSection,
   ads:       AdsManagementSection,
-  'ad-notifications': AdNotificationManagementSection,
   profile:   ProfileManagementSection,
   admins:    AdminManagementSection,
   settings:  SettingsSection,

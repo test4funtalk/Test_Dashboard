@@ -4,6 +4,7 @@ import {
   Megaphone, PlayCircle, PauseCircle, Crown, Users, Search,
   RefreshCw, Plus, X, AlertCircle, Loader2, ChevronLeft, ChevronRight,
   Image as ImageIcon, Video, Trash2, Eye, Upload, FileVideo, ImageOff, Pencil,
+  Bell, Send, BellOff,
 } from 'lucide-react';
 import api from '../../../services/api';
 
@@ -11,6 +12,11 @@ import api from '../../../services/api';
 
 const fmtDateTime = (d) =>
   d ? new Date(d).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+const SECTION_TABS = [
+  { id: 'ads',          label: 'Ads',                Icon: Megaphone },
+  { id: 'notifications', label: 'Global Notification', Icon: Bell      },
+];
 
 const AD_TABS = [
   { id: 'user', label: 'User Ads', Icon: Users },
@@ -23,6 +29,13 @@ const STATUS_FILTERS = [
   { value: 'inactive', label: 'Inactive' },
 ];
 
+const ROLE_FILTERS = [
+  { value: '',     label: 'All Roles' },
+  { value: 'user', label: 'User'      },
+  { value: 'host', label: 'Host'      },
+];
+
+const VALID_SECTION_TABS = new Set(SECTION_TABS.map((t) => t.id));
 const VALID_AD_TABS  = new Set(AD_TABS.map((t) => t.id));
 const VALID_STATUSES = new Set(STATUS_FILTERS.map((s) => s.value));
 
@@ -640,15 +653,460 @@ const AdCard = ({ ad, onView, onEdit, onDelete }) => {
   );
 };
 
+// ─── global notification form modal (create + edit) ────────────────────────────
+
+const NotificationFormModal = ({ notification, onClose, onSuccess }) => {
+  const isEdit = !!notification?._id;
+  const [title, setTitle]     = useState(notification?.title || '');
+  const [message, setMessage] = useState(notification?.message || '');
+  const [role, setRole]       = useState(notification?.role || 'user');
+  const [status, setStatus]   = useState(notification?.status || 'active');
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      if (isEdit) {
+        const { data } = await api.put(`/api/admin/ad-notifications/${notification._id}`, {
+          title: title.trim(), message: message.trim(), role, status,
+        });
+        onSuccess(data?.data);
+      } else {
+        const { data } = await api.post('/api/admin/ad-notifications', {
+          title: title.trim(), message: message.trim(), role,
+        });
+        onSuccess(data?.data);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || `Failed to ${isEdit ? 'update' : 'create'} notification`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="flex w-full flex-col max-h-[92vh] rounded-t-3xl border border-neutral-200 bg-white shadow-2xl sm:max-w-lg sm:rounded-2xl">
+
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-neutral-100 px-5 py-4">
+          <div>
+            <p className="font-semibold">{isEdit ? 'Edit Notification' : 'Create Global Notification'}</p>
+            <p className="text-xs text-neutral-400">
+              {isEdit ? 'Re-sends the push only if it stays active' : 'Pushes via FCM to every matching device on save'}
+            </p>
+          </div>
+          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-neutral-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {error && (
+            <div className="mx-5 mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <AlertCircle size={15} /> {error}
+            </div>
+          )}
+
+          <form id="notification-form" onSubmit={handleSubmit} className="space-y-4 p-5">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Title *</label>
+              <input
+                type="text" required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Diwali Offer"
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Message *</label>
+              <textarea
+                required
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                rows={3}
+                placeholder="Get 20% extra coins this week!"
+                className="w-full resize-none rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+
+            <div className={`grid gap-3 ${isEdit ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Send To *</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+                >
+                  <option value="user">Users</option>
+                  <option value="host">Hosts</option>
+                </select>
+              </div>
+
+              {isEdit && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Status</label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </form>
+        </div>
+
+        <div className="flex flex-shrink-0 gap-2 border-t border-neutral-100 px-5 py-4">
+          <button type="button" onClick={onClose}
+            className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50">
+            Cancel
+          </button>
+          <button type="submit" form="notification-form" disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-900 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50">
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create & Push'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── delete notification confirm modal ──────────────────────────────────────────
+
+const DeleteNotificationModal = ({ notification, onCancel, onConfirm, busy }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100">
+        <Trash2 size={22} className="text-red-600" />
+      </div>
+      <h3 className="text-base font-bold">Delete "{notification.title}"?</h3>
+      <p className="mt-1.5 text-sm text-neutral-500">
+        This permanently removes the notification. It does not recall already-delivered pushes. This action cannot be undone.
+      </p>
+      <div className="mt-5 flex gap-3">
+        <button onClick={onCancel} disabled={busy}
+          className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50 disabled:opacity-50">
+          Cancel
+        </button>
+        <button onClick={onConfirm} disabled={busy}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 py-2.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+          {busy ? 'Deleting…' : 'Delete Forever'}
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+// ─── global notification tab ────────────────────────────────────────────────────
+
+const GlobalNotificationsTab = () => {
+  const [notifications, setNotifications] = useState([]);
+  const [pagination, setPagination]       = useState({ total: 0, page: 1, limit: 20, pages: 0 });
+  const [summary, setSummary]             = useState({ hostNotifications: 0, userNotifications: 0, active: 0, inactive: 0 });
+  const [loading, setLoading]             = useState(false);
+  const [error, setError]                 = useState(null);
+  const [page, setPage]                   = useState(1);
+  const [role, setRole]                   = useState('');
+  const [status, setStatus]               = useState('');
+
+  const [showCreate, setShowCreate]     = useState(false);
+  const [editTarget, setEditTarget]     = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting]         = useState(false);
+  const [deleteError, setDeleteError]   = useState(null);
+
+  const fetchNotifications = useCallback(async (targetPage = 1) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = { page: targetPage, limit: 20 };
+      if (role)   params.role = role;
+      if (status) params.status = status;
+
+      const { data } = await api.get('/api/admin/ad-notifications', { params });
+
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      const pg   = data?.pagination ?? {};
+      const sm   = data?.summary ?? {};
+
+      setNotifications(rows);
+      setPagination({
+        total: pg.total ?? rows.length,
+        page:  pg.page  ?? targetPage,
+        limit: pg.limit ?? 20,
+        pages: pg.pages ?? Math.ceil((pg.total ?? rows.length) / 20),
+      });
+      setSummary({
+        hostNotifications: sm.hostNotifications ?? 0,
+        userNotifications: sm.userNotifications ?? 0,
+        active:            sm.active   ?? 0,
+        inactive:          sm.inactive ?? 0,
+      });
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to load notifications');
+    } finally {
+      setLoading(false);
+    }
+  }, [role, status]);
+
+  useEffect(() => {
+    fetchNotifications(page);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchNotifications]);
+
+  const onPage = (n) => { setPage(n); fetchNotifications(n); };
+
+  const onRoleChange = (r) => { setRole(r); setPage(1); };
+  const onStatusChange = (s) => { setStatus(s); setPage(1); };
+
+  const handleCreated = () => {
+    setShowCreate(false);
+    fetchNotifications(1);
+    setPage(1);
+  };
+
+  const handleUpdated = () => {
+    setEditTarget(null);
+    fetchNotifications(page);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.delete(`/api/admin/ad-notifications/${deleteTarget._id}`);
+      setDeleteTarget(null);
+      fetchNotifications(page);
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || 'Failed to delete notification');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const STAT_CARDS = [
+    { label: 'Total',              value: pagination.total,             Icon: Bell,        cls: 'bg-neutral-900 text-white' },
+    { label: 'Host Notifications', value: summary.hostNotifications,    Icon: Crown,       cls: 'bg-amber-50 text-amber-800 border border-amber-200' },
+    { label: 'User Notifications', value: summary.userNotifications,    Icon: Users,       cls: 'bg-blue-50 text-blue-800 border border-blue-200' },
+    { label: 'Active',             value: summary.active,               Icon: PlayCircle,  cls: 'bg-green-50 text-green-800 border border-green-200' },
+    { label: 'Inactive',           value: summary.inactive,             Icon: PauseCircle, cls: 'bg-neutral-100 text-neutral-600 border border-neutral-200' },
+  ];
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
+        {STAT_CARDS.map(({ label, value, Icon, cls }) => (
+          <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${cls}`}>
+            <div className="flex items-start justify-between">
+              <p className="text-2xl font-black sm:text-3xl">{value}</p>
+              <Icon size={18} className="opacity-50" />
+            </div>
+            <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1 sm:text-sm">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Main card */}
+      <div className="rounded-2xl border border-neutral-200 bg-white">
+
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ROLE_FILTERS.map(({ value, label }) => (
+              <button key={value} onClick={() => onRoleChange(value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  role === value ? 'bg-neutral-800 text-white' : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
+                }`}>
+                {label}
+              </button>
+            ))}
+            {STATUS_FILTERS.map(({ value, label }) => (
+              <button key={value} onClick={() => onStatusChange(value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  status === value ? 'bg-neutral-800 text-white' : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => fetchNotifications(page)}
+              disabled={loading}
+              title="Refresh"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-40"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-80"
+            >
+              <Plus size={13} /> New Notification
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center justify-between gap-3 border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:px-6">
+            <span className="flex items-center gap-2"><AlertCircle size={14} />{error}</span>
+            <button onClick={() => fetchNotifications(page)}
+              className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-red-50">
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Table */}
+        {loading && notifications.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+            <Loader2 size={20} className="animate-spin" /> Loading notifications…
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="py-16 text-center">
+            <Bell size={36} className="mx-auto mb-3 text-neutral-200" />
+            <p className="text-sm font-medium text-neutral-400">
+              {role || status ? 'No notifications match your filters' : 'No global notifications yet'}
+            </p>
+            <p className="mt-1 text-xs text-neutral-300">Created notifications will appear here</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] border-collapse text-sm">
+              <thead>
+                <tr className="bg-neutral-50">
+                  {['Title', 'Message', 'Role', 'Status', 'Push', 'Created', 'Actions'].map((h) => (
+                    <th key={h} className={`border border-neutral-200 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-400 ${h === 'Actions' ? 'text-right' : 'text-left'}`}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {notifications.map((n) => (
+                  <tr key={n._id} className="transition-colors hover:bg-neutral-50">
+                    <td className="border border-neutral-200 px-4 py-3 font-medium text-neutral-900">{n.title || '—'}</td>
+                    <td className="max-w-[260px] border border-neutral-200 px-4 py-3 text-xs text-neutral-600">
+                      <span className="line-clamp-2">{n.message || '—'}</span>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3"><RoleBadge role={n.role} /></td>
+                    <td className="border border-neutral-200 px-4 py-3"><StatusBadge status={n.status} /></td>
+                    <td className="border border-neutral-200 px-4 py-3">
+                      {n.pushSent ? (
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-green-700">
+                          <Send size={12} /> {n.pushDeviceCount ?? 0} devices
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-xs text-neutral-400">
+                          <BellOff size={12} /> Not sent
+                        </span>
+                      )}
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">{fmtDateTime(n.createdAt)}</td>
+                    <td className="border border-neutral-200 px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          onClick={() => setEditTarget(n)}
+                          className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition hover:border-neutral-400 hover:bg-neutral-50"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={() => { setDeleteError(null); setDeleteTarget(n); }}
+                          className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!loading && pagination.pages > 1 && (
+          <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 sm:px-6">
+            <p className="text-xs text-neutral-400">{pagination.total} total · page {pagination.page} of {pagination.pages}</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => onPage(Math.max(1, pagination.page - 1))} disabled={pagination.page <= 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronLeft size={14} />
+              </button>
+              <button onClick={() => onPage(Math.min(pagination.pages, pagination.page + 1))} disabled={pagination.page >= pagination.pages}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showCreate && (
+        <NotificationFormModal onClose={() => setShowCreate(false)} onSuccess={handleCreated} />
+      )}
+
+      {editTarget && (
+        <NotificationFormModal
+          notification={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSuccess={handleUpdated}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteNotificationModal
+          notification={deleteTarget}
+          busy={deleting}
+          onCancel={() => { if (!deleting) setDeleteTarget(null); }}
+          onConfirm={confirmDelete}
+        />
+      )}
+
+      {deleteError && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 shadow-lg">
+          <AlertCircle size={15} /> {deleteError}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── main section ─────────────────────────────────────────────────────────────
 
 const AdsManagementSection = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const rawAdTab  = searchParams.get('adTab') || 'user';
-  const rawStatus = searchParams.get('adStatus') || '';
+  const rawSection = searchParams.get('section') || 'ads';
+  const rawAdTab   = searchParams.get('adTab') || 'user';
+  const rawStatus  = searchParams.get('adStatus') || '';
+  const activeSection = VALID_SECTION_TABS.has(rawSection) ? rawSection : 'ads';
   const activeAdTab   = VALID_AD_TABS.has(rawAdTab) ? rawAdTab : 'user';
   const activeStatus  = VALID_STATUSES.has(rawStatus) ? rawStatus : '';
+
+  const setActiveSection = useCallback((s) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (s === 'ads') p.delete('section'); else p.set('section', s);
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const [ads, setAds]               = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 0 });
@@ -766,6 +1224,28 @@ const AdsManagementSection = () => {
   return (
     <div className="space-y-4 sm:space-y-6">
 
+      {/* Top-level section tabs */}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-neutral-200">
+        {SECTION_TABS.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveSection(id)}
+            className={`-mb-px flex flex-shrink-0 items-center gap-2 rounded-t-lg px-4 py-2.5 text-sm font-medium transition-all ${
+              activeSection === id
+                ? 'border-b-2 border-neutral-900 text-neutral-900'
+                : 'text-neutral-400 hover:text-neutral-700'
+            }`}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeSection === 'notifications' ? (
+        <GlobalNotificationsTab />
+      ) : (
+      <>
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
         {STAT_CARDS.map(({ label, value, Icon, cls }) => (
@@ -930,6 +1410,8 @@ const AdsManagementSection = () => {
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 shadow-lg">
           <AlertCircle size={15} /> {deleteError}
         </div>
+      )}
+      </>
       )}
     </div>
   );
