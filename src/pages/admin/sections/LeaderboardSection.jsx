@@ -8,6 +8,7 @@ import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
 import { getLanguages } from '../../../services/languageService';
 import LeaderboardAside from './LeaderboardAside';
+import RatedHostsAside from './RatedHostsAside';
 
 const fmtINR = (n) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 const fmtNum = (n) => Number(n ?? 0).toLocaleString('en-IN');
@@ -339,7 +340,56 @@ const StarRow = ({ score }) => (
   </span>
 );
 
+// Hosts are ranked across the whole platform — pull every host-targeted rating
+// (paginating in large batches, capped for safety) and aggregate client-side,
+// since the API only exposes individual rating records, not a per-host rollup.
+const MAX_HOST_RATING_PAGES = 30;
+const HOST_RATING_PAGE_SIZE = 100;
+
 const RatingsTab = () => {
+  const [hostRanking, setHostRanking] = useState([]);
+  const [aggLoading, setAggLoading]   = useState(false);
+  const [aggError, setAggError]       = useState(null);
+
+  const fetchHostRanking = useCallback(async () => {
+    setAggLoading(true);
+    setAggError(null);
+    try {
+      const byHost = new Map();
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const { data } = await api.get('/api/admin/ratings', {
+          params: { page, limit: HOST_RATING_PAGE_SIZE, rateeRole: 'host' },
+        });
+        const rows = Array.isArray(data?.data) ? data.data : [];
+        totalPages = data?.pagination?.pages ?? 1;
+        rows.forEach((r) => {
+          const id = r.rateeId?._id ?? r.rateeId;
+          if (!id || !r.score) return;
+          const entry = byHost.get(id) || { host: r.rateeId, total: 0, count: 0 };
+          entry.total += r.score;
+          entry.count += 1;
+          entry.host = r.rateeId;
+          byHost.set(id, entry);
+        });
+        page += 1;
+      } while (page <= totalPages && page <= MAX_HOST_RATING_PAGES);
+
+      const ranked = Array.from(byHost.values())
+        .map((e) => ({ host: e.host, avgRating: e.total / e.count, count: e.count }))
+        .sort((a, b) => b.avgRating - a.avgRating || b.count - a.count);
+
+      setHostRanking(ranked);
+    } catch (err) {
+      setAggError(err.response?.data?.message || 'Failed to load host ratings');
+    } finally {
+      setAggLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchHostRanking(); }, [fetchHostRanking]);
+
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -389,6 +439,72 @@ const RatingsTab = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+
+      <RatedHostsAside hosts={hostRanking} loading={aggLoading} error={aggError} />
+
+      {/* Full host ranking */}
+      <div className="rounded-2xl border border-neutral-200 bg-white">
+        <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-neutral-800">
+            <Star size={15} className="text-neutral-400" /> All Hosts by Rating
+          </p>
+          <button onClick={fetchHostRanking}
+            className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800">
+            <RefreshCw size={13} className={aggLoading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
+
+        {aggLoading && hostRanking.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+            <Loader2 size={20} className="animate-spin" /> Crunching ratings…
+          </div>
+        ) : hostRanking.length === 0 ? (
+          <div className="py-16 text-center">
+            <Star size={36} className="mx-auto mb-3 text-neutral-200" />
+            <p className="text-sm font-medium text-neutral-400">No host ratings yet</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px] text-sm">
+              <thead>
+                <tr className="border-b border-neutral-100">
+                  {['Rank', 'Host', 'Average Rating', 'Ratings'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-50">
+                {hostRanking.map((entry, i) => (
+                  <tr key={entry.host?._id || i} className="transition-colors hover:bg-neutral-50/70">
+                    <td className="px-4 py-3 sm:px-5">
+                      <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                        RANK_STYLES[i] || 'bg-neutral-100 text-neutral-400'
+                      }`}>
+                        {i + 1}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 sm:px-5">
+                      <div className="flex items-center gap-2.5">
+                        <AvatarDisplay src={entry.host?.avatar} name={entry.host?.username} size="sm" />
+                        <p className="truncate font-medium text-neutral-900">{entry.host?.username || '—'}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 sm:px-5">
+                      <span className="flex items-center gap-1 text-sm font-bold text-amber-600">
+                        <Star size={13} className="fill-current" /> {entry.avgRating.toFixed(1)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-neutral-600 sm:px-5">{entry.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-3 gap-3 sm:gap-4">
         <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-4">
           <div className="flex items-start justify-between">
