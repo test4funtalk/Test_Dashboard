@@ -1,9 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Trophy, Crown, Medal, Award, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
-import api from '../../../services/api';
 
 const fmtINR = (n) => `₹${Math.round(n ?? 0).toLocaleString('en-IN')}`;
+
+const PERIOD_LABELS = {
+  today:     "Today's",
+  thisWeek:  "This Week's",
+  thisMonth: "This Month's",
+  allTime:   'All-Time',
+};
 
 const RANK_META = {
   1: { Icon: Crown, ring: 'ring-amber-300',   badge: 'bg-gradient-to-b from-amber-300 to-amber-500 text-amber-900',      bar: 'bg-gradient-to-t from-amber-500 to-amber-300',    avatarSize: 'xl', minH: 168, cash: 'text-amber-600',   num: 'text-amber-900/30' },
@@ -78,36 +84,20 @@ const PodiumColumn = ({ host, rank, barHeight, revealed }) => {
   );
 };
 
-const LeaderboardAside = () => {
-  const [topHosts, setTopHosts]       = useState([]);
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState(null);
+const LeaderboardAside = ({ topHosts: allTopHosts = [], loading, error, period }) => {
   const [revealCount, setRevealCount] = useState(0);
-
-  const fetchTop3 = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setRevealCount(0);
-    try {
-      const { data } = await api.get('/api/admin/earnings');
-      setTopHosts((data?.data?.topHosts ?? []).slice(0, 3));
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load leaderboard');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchTop3(); }, [fetchTop3]);
+  const topHosts = allTopHosts.slice(0, 3);
 
   // Countdown reveal: 3rd place shows first, building suspense up to the 1st place host.
+  // Resets and replays whenever the underlying list changes (e.g. switching period filters).
   useEffect(() => {
+    setRevealCount(0);
     if (!topHosts.length) return;
     const timers = [1, 2, 3].map((n) =>
       setTimeout(() => setRevealCount((c) => Math.max(c, n)), 450 * n)
     );
     return () => timers.forEach(clearTimeout);
-  }, [topHosts]);
+  }, [topHosts.map((h) => h._id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const maxCash = topHosts[0]?.totalCash || 1;
   const heightFor = (rank, cash) => Math.max(RANK_META[rank].minH * Math.max(cash / maxCash, 0.3), 60);
@@ -123,7 +113,9 @@ const LeaderboardAside = () => {
 
       <div className="relative mb-8 flex items-center justify-center gap-2 sm:mb-12">
         <Trophy size={20} className="text-amber-500" />
-        <p className="text-base font-bold text-neutral-900 sm:text-lg">Top Earning Hosts</p>
+        <p className="text-base font-bold text-neutral-900 sm:text-lg">
+          {PERIOD_LABELS[period] || ''} Top Earning Hosts
+        </p>
       </div>
 
       {error ? (

@@ -77,7 +77,7 @@ const TopHostsTab = () => {
     setError(null);
     try {
       const { data } = await api.get('/api/admin/earnings', {
-        params: motherTongue ? { motherTongue } : {},
+        params: { period, ...(motherTongue && { motherTongue }) },
       });
       setData(data?.data ?? null);
     } catch (err) {
@@ -85,7 +85,7 @@ const TopHostsTab = () => {
     } finally {
       setLoading(false);
     }
-  }, [motherTongue]);
+  }, [period, motherTongue]);
 
   useEffect(() => { fetchEarnings(); }, [fetchEarnings]);
 
@@ -95,7 +95,7 @@ const TopHostsTab = () => {
   return (
     <div className="space-y-4 sm:space-y-6">
 
-      <LeaderboardAside />
+      <LeaderboardAside topHosts={topHosts} loading={loading && !data} error={error} period={period} />
 
       {/* Filters bar */}
       <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
@@ -175,7 +175,7 @@ const TopHostsTab = () => {
       <div className="rounded-2xl border border-neutral-200 bg-white">
         <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
           <p className="flex items-center gap-1.5 text-sm font-semibold text-neutral-800">
-            <TrendingUp size={15} className="text-neutral-400" /> Top 10 Earning Hosts
+            <TrendingUp size={15} className="text-neutral-400" /> Top Earning Hosts
           </p>
           {motherTongue && (
             <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">
@@ -195,27 +195,27 @@ const TopHostsTab = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px] text-sm">
+            <table className="w-full min-w-[800px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-neutral-100">
+                <tr className="bg-neutral-50">
                   {['Rank', 'Host', 'Call Cash', 'Gift Cash', 'Total Cash', 'Total Calls', 'Total Duration'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5">
+                    <th key={h} className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-50">
+              <tbody>
                 {topHosts.map((h, i) => (
-                  <tr key={h._id} className="transition-colors hover:bg-neutral-50/70">
-                    <td className="px-4 py-3 sm:px-5">
+                  <tr key={h._id} className="transition-colors hover:bg-neutral-50">
+                    <td className="border border-neutral-200 px-4 py-3 sm:px-5">
                       <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
                         RANK_STYLES[i] || 'bg-neutral-100 text-neutral-400'
                       }`}>
                         {i + 1}
                       </span>
                     </td>
-                    <td className="px-4 py-3 sm:px-5">
+                    <td className="border border-neutral-200 px-4 py-3 sm:px-5">
                       <div className="flex items-center gap-2.5">
                         <AvatarDisplay src={h.host?.avatar} name={h.host?.username} size="sm" />
                         <div className="min-w-0">
@@ -224,11 +224,11 @@ const TopHostsTab = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm font-medium text-neutral-700 sm:px-5">{fmtINR(h.callCash)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-neutral-700 sm:px-5">{fmtINR(h.giftCash)}</td>
-                    <td className="px-4 py-3 text-base font-bold text-green-700 sm:px-5">{fmtINR(h.totalCash)}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-600 sm:px-5">{fmtNum(h.totalCalls)}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-600 sm:px-5">{fmtDuration(h.totalSeconds)}</td>
+                    <td className="border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-700 sm:px-5">{fmtINR(h.callCash)}</td>
+                    <td className="border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-700 sm:px-5">{fmtINR(h.giftCash)}</td>
+                    <td className="border border-neutral-200 px-4 py-3 text-base font-bold text-green-700 sm:px-5">{fmtINR(h.totalCash)}</td>
+                    <td className="border border-neutral-200 px-4 py-3 text-sm text-neutral-600 sm:px-5">{fmtNum(h.totalCalls)}</td>
+                    <td className="border border-neutral-200 px-4 py-3 text-sm text-neutral-600 sm:px-5">{fmtDuration(h.totalSeconds)}</td>
                   </tr>
                 ))}
               </tbody>
