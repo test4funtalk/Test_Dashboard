@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, Loader2, AlertCircle, Phone, Video, Clock, Coins,
-  Gift, Star, Calendar, MessageSquare, Wallet,
+  Gift, Star, Calendar, MessageSquare, Wallet, Bell,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -135,6 +135,31 @@ const CallDetailModal = ({ callId, onClose }) => {
               <StatTile icon={Calendar} label="Started"    value={fmtDateTime(call.startedAt)} />
               <StatTile icon={Calendar} label="Ended"      value={fmtDateTime(call.endedAt)} />
               <StatTile icon={Coins}    label="Coins Billed" value={call.billing?.totalCoinsDeducted ?? 0} />
+            </div>
+
+            {/* Push Notification */}
+            <div className="rounded-2xl border border-neutral-100 p-4">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                <Bell size={12} /> Push Notification
+              </p>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-neutral-400">Delivered</p>
+                  <span className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                    call.pushNotification?.sent ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                  }`}>
+                    {call.pushNotification?.sent ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-400">Devices</p>
+                  <p className="font-medium">{call.pushNotification?.deviceCount ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-400">Sent At</p>
+                  <p className="font-medium">{fmtDateTime(call.pushNotification?.sentAt)}</p>
+                </div>
+              </div>
             </div>
 
             {/* Billing */}

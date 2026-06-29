@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   IdCard, Clock, CheckCircle2, XCircle, Search,
   AlertCircle, Loader2, ChevronLeft, ChevronRight,
-  RefreshCw, X, Check, Ban, CreditCard,
+  RefreshCw, X, Check, Ban, CreditCard, Landmark,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -12,6 +12,9 @@ import api from '../../../services/api';
 
 const fmtDateTime = (d) =>
   d ? new Date(d).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+const fmtDate = (d) =>
+  d ? new Date(d).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
 const STATUS_STYLES = {
   pending:  'bg-amber-100 text-amber-700',
@@ -61,45 +64,109 @@ const KycActionModal = ({ submission, mode, onClose, onDone }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl border border-neutral-200 bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-bold">KYC Submission</h3>
-          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-neutral-100">
-            <X size={16} />
+      <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-neutral-200 bg-white p-6 shadow-2xl sm:max-w-3xl sm:rounded-2xl sm:p-8">
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className="text-xl font-bold">KYC Submission</h3>
+          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-neutral-100">
+            <X size={18} />
           </button>
         </div>
 
         {/* Submission summary */}
-        <div className="mb-5 space-y-3">
-          <div className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3">
-            <AvatarDisplay name={submission.username} size="sm" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-neutral-900">{submission.username || '—'}</p>
+        <div className="mb-6 space-y-4">
+          <div className="flex items-center gap-4 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-4">
+            <AvatarDisplay name={submission.username} size="md" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-semibold text-neutral-900">{submission.username || '—'}</p>
               <p className="truncate text-xs text-neutral-400">{submission.userId}</p>
             </div>
             <StatusBadge status={submission.status} />
           </div>
 
-          <div className="rounded-xl border border-neutral-100 px-3 py-3">
-            <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-              <CreditCard size={12} /> PAN Details
+          <div className="grid gap-4">
+            <div className="rounded-xl border border-neutral-100 px-4 py-4">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                <CreditCard size={13} /> PAN Details
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-neutral-400">Number</p>
+                  <p className="font-mono font-medium">{submission.pan?.number || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-400">Date of Birth</p>
+                  <p className="font-medium">{fmtDate(submission.pan?.dob)}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-neutral-400">Name as per PAN</p>
+                  <p className="font-medium">{submission.pan?.nameAsPerPan || '—'}</p>
+                </div>
+              </div>
+              {submission.pan?.imageUrl && (
+                <a href={submission.pan.imageUrl} target="_blank" rel="noreferrer" className="mt-3 block">
+                  <img src={submission.pan.imageUrl} alt="PAN card" className="h-48 w-full rounded-lg border border-neutral-200 object-cover" />
+                </a>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-neutral-100 px-4 py-4">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                <IdCard size={13} /> Aadhaar Details
+              </p>
+              {(submission.aadhaar?.frontImageUrl || submission.aadhaar?.backImageUrl) ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {submission.aadhaar?.frontImageUrl && (
+                    <a href={submission.aadhaar.frontImageUrl} target="_blank" rel="noreferrer">
+                      <img src={submission.aadhaar.frontImageUrl} alt="Aadhaar front" className="h-[92px] w-full rounded-lg border border-neutral-200 object-cover sm:h-[114px]" />
+                      <p className="mt-1 text-center text-[10px] text-neutral-400">Front</p>
+                    </a>
+                  )}
+                  {submission.aadhaar?.backImageUrl && (
+                    <a href={submission.aadhaar.backImageUrl} target="_blank" rel="noreferrer">
+                      <img src={submission.aadhaar.backImageUrl} alt="Aadhaar back" className="h-[92px] w-full rounded-lg border border-neutral-200 object-cover sm:h-[114px]" />
+                      <p className="mt-1 text-center text-[10px] text-neutral-400">Back</p>
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-400">—</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-neutral-100 px-4 py-4">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+              <Landmark size={13} /> Bank Details
             </p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
               <div>
-                <p className="text-xs text-neutral-400">Number</p>
-                <p className="font-mono font-medium">{submission.pan?.number || '—'}</p>
+                <p className="text-xs text-neutral-400">Account Holder</p>
+                <p className="font-medium">{submission.bank?.accountHolderName || '—'}</p>
               </div>
               <div>
-                <p className="text-xs text-neutral-400">Name as per PAN</p>
-                <p className="font-medium">{submission.pan?.nameAsPerPan || '—'}</p>
+                <p className="text-xs text-neutral-400">Account Number</p>
+                <p className="font-mono font-medium">{submission.bank?.accountNumber || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-400">Bank Name</p>
+                <p className="font-medium">{submission.bank?.bankName || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-400">IFSC Code</p>
+                <p className="font-mono font-medium">{submission.bank?.ifscCode || '—'}</p>
               </div>
             </div>
           </div>
 
-          <p className="text-xs text-neutral-400">Submitted {fmtDateTime(submission.createdAt)}</p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-400">
+            <span>Submitted {fmtDateTime(submission.createdAt)}</span>
+            {submission.status !== 'pending' && (submission.reviewedAt || submission.reviewedBy) && (
+              <span>Reviewed {fmtDateTime(submission.reviewedAt)}{submission.reviewedBy ? ` by ${submission.reviewedBy}` : ''}</span>
+            )}
+          </div>
 
           {submission.adminNote && (
-            <p className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2.5 text-xs text-neutral-500">
+            <p className="rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 text-sm text-neutral-500">
               <span className="font-semibold text-neutral-600">Admin note: </span>{submission.adminNote}
             </p>
           )}
@@ -110,7 +177,7 @@ const KycActionModal = ({ submission, mode, onClose, onDone }) => {
           <div className="mb-4 flex gap-2">
             <button
               onClick={() => { setActive('approve'); setError(null); }}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-sm font-medium transition ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition ${
                 active === 'approve' ? 'border-green-600 bg-green-50 text-green-700' : 'border-neutral-200 text-neutral-500 hover:border-neutral-400'
               }`}
             >
@@ -118,7 +185,7 @@ const KycActionModal = ({ submission, mode, onClose, onDone }) => {
             </button>
             <button
               onClick={() => { setActive('reject'); setError(null); }}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-sm font-medium transition ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition ${
                 active === 'reject' ? 'border-red-600 bg-red-50 text-red-700' : 'border-neutral-200 text-neutral-500 hover:border-neutral-400'
               }`}
             >

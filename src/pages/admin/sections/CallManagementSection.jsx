@@ -255,7 +255,7 @@ const CallsTab = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] border-collapse text-sm">
+            <table className="w-full min-w-[1080px] border-collapse text-sm">
               <thead>
                 <tr className="bg-neutral-50">
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
@@ -267,6 +267,7 @@ const CallsTab = () => {
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-24">Gift Cash</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
                 </tr>
               </thead>
@@ -329,6 +330,12 @@ const CallsTab = () => {
                       <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
                         {call.gifts?.totalGiftCoins
                           ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{call.gifts.totalGiftCoins}</span>
+                          : <span className="text-xs text-neutral-300">—</span>
+                        }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {call.gifts?.totalGiftCash
+                          ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.gifts.totalGiftCash}</span>
                           : <span className="text-xs text-neutral-300">—</span>
                         }
                       </td>

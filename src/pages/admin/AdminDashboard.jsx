@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
-  Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard,
+  Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
@@ -16,16 +16,20 @@ import PackageManagementSection from './sections/PackageManagementSection';
 import AdsManagementSection from './sections/AdsManagementSection';
 import CallManagementSection from './sections/CallManagementSection';
 import KycManagementSection from './sections/KycManagementSection';
+import CheckoutManagementSection from './sections/CheckoutManagementSection';
 import ProfileManagementSection from './sections/ProfileManagementSection';
+import LeaderboardSection from './sections/LeaderboardSection';
 import SettingsSection from './sections/SettingsSection';
 
 // ─── config ───────────────────────────────────────────────────────────────────
 
 const NAV = [
-  { id: 'overview',  label: 'Overview',            Icon: LayoutDashboard },
+  { id: 'overview',    label: 'Overview',            Icon: LayoutDashboard },
+  { id: 'leaderboard', label: 'Leaderboard',          Icon: Trophy          },
   { id: 'calls',     label: 'Call Management',      Icon: PhoneCall       },
   { id: 'users',     label: 'User Management',      Icon: Users           },
   { id: 'payments',  label: 'Payment Management',   Icon: CreditCard      },
+  { id: 'checkouts', label: 'Checkout Management',  Icon: Banknote        },
   { id: 'kyc',       label: 'KYC Management',       Icon: IdCard          },
   { id: 'packages',  label: 'Package Management',   Icon: Package         },
   { id: 'ads',       label: 'Ads Management',       Icon: Megaphone       },
@@ -35,11 +39,13 @@ const NAV = [
 ];
 
 const PAGE_META = {
-  overview:  { title: 'Overview',            sub: 'Your profile and account details'           },
+  overview:    { title: 'Overview',            sub: 'Your profile and account details'           },
+  leaderboard: { title: 'Leaderboard',         sub: 'Platform earnings and top earning hosts'    },
   calls:     { title: 'Call Management',     sub: 'Browse and inspect all platform calls'      },
   users:     { title: 'User Management',     sub: 'View and manage platform users'             },
   admins:    { title: 'Admin Management',    sub: 'Create, view and manage admin accounts'     },
   payments:  { title: 'Payment Management',  sub: 'Track transactions and revenue'             },
+  checkouts: { title: 'Checkout Management', sub: 'Review host withdrawal requests and payout config' },
   packages:  { title: 'Package Management',  sub: 'Manage subscription packages and plans'    },
   ads:       { title: 'Ads Management',      sub: 'Monitor and control ad campaigns'           },
   kyc:       { title: 'KYC Management',      sub: 'Review and approve host identity submissions' },
@@ -48,10 +54,12 @@ const PAGE_META = {
 };
 
 const SECTION_MAP = {
-  overview:  OverviewSection,
+  overview:    OverviewSection,
+  leaderboard: LeaderboardSection,
   calls:     CallManagementSection,
   users:     UserManagementSection,
   payments:  PaymentManagementSection,
+  checkouts: CheckoutManagementSection,
   kyc:       KycManagementSection,
   packages:  PackageManagementSection,
   ads:       AdsManagementSection,

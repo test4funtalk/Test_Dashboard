@@ -1359,7 +1359,7 @@ const CHECKOUT_STATUS_FILTERS = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
-// Matches the exact period values accepted by GET /api/admin/hosts/:hostId/checkout-history
+// Matches the exact period values accepted by GET /api/admin/checkouts/host/:hostId
 const CHECKOUT_PERIOD_FILTERS = [
   { value: '',             label: 'All'        },
   { value: 'today',        label: 'Today'      },
@@ -1379,6 +1379,44 @@ const WithdrawalHistoryCard = ({ hostId }) => {
   const [status,   setStatus]   = useState('');
   const [period,   setPeriod]   = useState('');
 
+  const [actionTarget, setActionTarget] = useState(null); // checkout request being approved/rejected
+  const [actionMode,   setActionMode]   = useState(null); // 'approve' | 'reject'
+  const [actionNote,   setActionNote]   = useState('');
+  const [actionBusy,   setActionBusy]   = useState(false);
+  const [actionError,  setActionError]  = useState(null);
+
+  const openAction = (request, mode) => {
+    setActionTarget(request);
+    setActionMode(mode);
+    setActionNote('');
+    setActionError(null);
+  };
+  const closeAction = () => {
+    setActionTarget(null);
+    setActionMode(null);
+    setActionNote('');
+    setActionError(null);
+  };
+
+  const submitAction = async () => {
+    if (actionMode === 'reject' && !actionNote.trim()) {
+      setActionError('A note is required to reject a withdrawal request');
+      return;
+    }
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const { data } = await api.put(`/api/admin/checkouts/${actionTarget._id}/${actionMode}`, { note: actionNote.trim() });
+      const updated = data?.data ?? {};
+      setRequests((prev) => prev.map((r) => (r._id === actionTarget._id ? { ...r, ...updated } : r)));
+      closeAction();
+    } catch (err) {
+      setActionError(err.response?.data?.message || `Failed to ${actionMode} withdrawal request`);
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const fetchHistory = useCallback(async (targetPage, targetStatus, targetPeriod) => {
     setLoading(true);
     setError(null);
@@ -1386,7 +1424,7 @@ const WithdrawalHistoryCard = ({ hostId }) => {
       const params = { page: targetPage, limit: 20 };
       if (targetStatus) params.status = targetStatus;
       if (targetPeriod) params.period = targetPeriod;
-      const { data } = await api.get(`/api/admin/hosts/${hostId}/checkout-history`, { params });
+      const { data } = await api.get(`/api/admin/checkouts/host/${hostId}`, { params });
       const rows = Array.isArray(data?.data) ? data.data : [];
       const pg   = data?.pagination ?? {};
       setRequests(rows);
@@ -1476,11 +1514,11 @@ const WithdrawalHistoryCard = ({ hostId }) => {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px]">
+          <table className="w-full min-w-[820px]">
             <thead>
               <tr className="border-b border-neutral-100">
-                {['Gross', 'Platform Fee', 'GST', 'Net Amount', 'Status', 'Processed By', 'Date'].map((h) => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5">
+                {['Gross', 'Deductions', 'GST', 'Net Amount', 'Status', 'Processed By', 'Date', 'Actions'].map((h) => (
+                  <th key={h} className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5 ${h === 'Actions' ? 'text-right' : 'text-left'}`}>
                     {h}
                   </th>
                 ))}
@@ -1492,8 +1530,14 @@ const WithdrawalHistoryCard = ({ hostId }) => {
                 return (
                   <tr key={r._id} className="transition hover:bg-neutral-50">
                     <td className="px-4 py-3 text-sm font-medium text-neutral-800 sm:px-5">{fmtINR(r.grossAmount)}</td>
-                    <td className="px-4 py-3 text-xs text-neutral-500 sm:px-5">
-                      {fmtINR(r.platformFeeAmount)} <span className="text-neutral-300">({r.platformFeePercent ?? 0}%)</span>
+                    <td
+                      className="px-4 py-3 text-xs text-neutral-500 sm:px-5"
+                      title={r.deductions?.length
+                        ? r.deductions.map((d) => `${d.label}: ${fmtINR(d.amount)}${d.type === 'percent' ? ` (${d.value}%)` : ''}`).join('\n')
+                        : undefined}
+                    >
+                      {fmtINR(r.totalDeductionAmount)}
+                      {r.deductions?.length > 0 && <span className="text-neutral-300"> ({r.deductions.length})</span>}
                     </td>
                     <td className="px-4 py-3 text-xs text-neutral-500 sm:px-5">
                       {fmtINR(r.gstAmount)} <span className="text-neutral-300">({r.gstPercent ?? 0}%)</span>
@@ -1511,6 +1555,26 @@ const WithdrawalHistoryCard = ({ hostId }) => {
                       {r.processedAt && <p className="text-[10px] text-neutral-300">{fmtDateTime(r.processedAt)}</p>}
                     </td>
                     <td className="px-4 py-3 text-xs text-neutral-500 sm:px-5">{fmtDateTime(r.createdAt)}</td>
+                    <td className="px-4 py-3 text-right sm:px-5">
+                      {st === 'pending' ? (
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() => openAction(r, 'approve')}
+                            className="rounded-lg border border-green-200 px-2.5 py-1.5 text-xs font-medium text-green-700 transition hover:bg-green-50"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => openAction(r, 'reject')}
+                            className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-neutral-300">—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -1539,6 +1603,73 @@ const WithdrawalHistoryCard = ({ hostId }) => {
             >
               <ChevronRight size={14} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Approve / reject confirmation modal */}
+      {actionTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl border border-neutral-200 bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-base font-bold">
+                {actionMode === 'approve' ? 'Approve Withdrawal' : 'Reject Withdrawal'}
+              </h3>
+              <button onClick={closeAction} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-neutral-100">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mb-4 space-y-1 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-neutral-400">Net Amount</span>
+                <span className="font-bold text-emerald-700">{fmtINR(actionTarget.netAmount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-400">Gross Amount</span>
+                <span className="font-medium">{fmtINR(actionTarget.grossAmount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-400">Requested</span>
+                <span className="font-medium">{fmtDateTime(actionTarget.createdAt)}</span>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="mb-1 block text-xs font-semibold text-neutral-600">
+                Note {actionMode === 'reject' && <span className="text-red-500">(required)</span>}
+              </label>
+              <textarea
+                value={actionNote}
+                onChange={(e) => setActionNote(e.target.value)}
+                rows={3}
+                placeholder={actionMode === 'approve' ? 'Payout processed via bank transfer' : 'Bank details could not be verified'}
+                className="w-full resize-none rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+
+            {actionError && (
+              <p className="mb-3 flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                <AlertCircle size={12} /> {actionError}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={closeAction}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50">
+                Cancel
+              </button>
+              <button
+                onClick={submitAction}
+                disabled={actionBusy}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white transition disabled:opacity-50 ${
+                  actionMode === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {actionBusy && <Loader2 size={13} className="animate-spin" />}
+                {actionBusy ? 'Submitting…' : actionMode === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+              </button>
+            </div>
           </div>
         </div>
       )}
