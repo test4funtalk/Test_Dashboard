@@ -23,20 +23,20 @@ const AD_TABS = [
   { id: 'host', label: 'Host Ads', Icon: Crown },
 ];
 
+const NOTIFICATION_TABS = [
+  { id: 'user', label: 'User Notification', Icon: Users },
+  { id: 'host', label: 'Host Notification', Icon: Crown },
+];
+
 const STATUS_FILTERS = [
   { value: '',         label: 'All'      },
   { value: 'active',   label: 'Active'   },
   { value: 'inactive', label: 'Inactive' },
 ];
 
-const ROLE_FILTERS = [
-  { value: '',     label: 'All Roles' },
-  { value: 'user', label: 'User'      },
-  { value: 'host', label: 'Host'      },
-];
-
 const VALID_SECTION_TABS = new Set(SECTION_TABS.map((t) => t.id));
 const VALID_AD_TABS  = new Set(AD_TABS.map((t) => t.id));
+const VALID_NOTIFICATION_TABS = new Set(NOTIFICATION_TABS.map((t) => t.id));
 const VALID_STATUSES = new Set(STATUS_FILTERS.map((s) => s.value));
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm'];
@@ -655,11 +655,11 @@ const AdCard = ({ ad, onView, onEdit, onDelete }) => {
 
 // ─── global notification form modal (create + edit) ────────────────────────────
 
-const NotificationFormModal = ({ notification, onClose, onSuccess }) => {
+const NotificationFormModal = ({ notification, defaultRole, onClose, onSuccess }) => {
   const isEdit = !!notification?._id;
   const [title, setTitle]     = useState(notification?.title || '');
   const [message, setMessage] = useState(notification?.message || '');
-  const [role, setRole]       = useState(notification?.role || 'user');
+  const [role, setRole]       = useState(notification?.role || defaultRole || 'user');
   const [status, setStatus]   = useState(notification?.status || 'active');
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState(null);
@@ -737,14 +737,21 @@ const NotificationFormModal = ({ notification, onClose, onSuccess }) => {
             <div className={`grid gap-3 ${isEdit ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <div>
                 <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Send To *</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
-                >
-                  <option value="user">Users</option>
-                  <option value="host">Hosts</option>
-                </select>
+                {isEdit ? (
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+                  >
+                    <option value="user">Users</option>
+                    <option value="host">Hosts</option>
+                  </select>
+                ) : (
+                  <div className="flex h-[42px] items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 text-sm font-medium capitalize text-neutral-700">
+                    {role === 'host' ? <Crown size={14} className="text-amber-500" /> : <Users size={14} className="text-blue-500" />}
+                    {role === 'host' ? 'Hosts' : 'Users'}
+                  </div>
+                )}
               </div>
 
               {isEdit && (
@@ -810,14 +817,26 @@ const DeleteNotificationModal = ({ notification, onCancel, onConfirm, busy }) =>
 // ─── global notification tab ────────────────────────────────────────────────────
 
 const GlobalNotificationsTab = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawNotifTab = searchParams.get('notifTab') || 'user';
+  const activeNotifTab = VALID_NOTIFICATION_TABS.has(rawNotifTab) ? rawNotifTab : 'user';
+
   const [notifications, setNotifications] = useState([]);
   const [pagination, setPagination]       = useState({ total: 0, page: 1, limit: 20, pages: 0 });
-  const [summary, setSummary]             = useState({ hostNotifications: 0, userNotifications: 0, active: 0, inactive: 0 });
+  const [roleStats, setRoleStats]         = useState({ active: 0, inactive: 0 });
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState(null);
   const [page, setPage]                   = useState(1);
-  const [role, setRole]                   = useState('');
   const [status, setStatus]               = useState('');
+
+  const setActiveNotifTab = useCallback((t) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (t === 'user') p.delete('notifTab'); else p.set('notifTab', t);
+      return p;
+    }, { replace: true });
+    setPage(1);
+  }, [setSearchParams]);
 
   const [showCreate, setShowCreate]     = useState(false);
   const [editTarget, setEditTarget]     = useState(null);
@@ -829,15 +848,13 @@ const GlobalNotificationsTab = () => {
     setLoading(true);
     setError(null);
     try {
-      const params = { page: targetPage, limit: 20 };
-      if (role)   params.role = role;
+      const params = { page: targetPage, limit: 20, role: activeNotifTab };
       if (status) params.status = status;
 
       const { data } = await api.get('/api/admin/ad-notifications', { params });
 
       const rows = Array.isArray(data?.data) ? data.data : [];
       const pg   = data?.pagination ?? {};
-      const sm   = data?.summary ?? {};
 
       setNotifications(rows);
       setPagination({
@@ -846,18 +863,31 @@ const GlobalNotificationsTab = () => {
         limit: pg.limit ?? 20,
         pages: pg.pages ?? Math.ceil((pg.total ?? rows.length) / 20),
       });
-      setSummary({
-        hostNotifications: sm.hostNotifications ?? 0,
-        userNotifications: sm.userNotifications ?? 0,
-        active:            sm.active   ?? 0,
-        inactive:          sm.inactive ?? 0,
-      });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to load notifications');
     } finally {
       setLoading(false);
     }
-  }, [role, status]);
+  }, [activeNotifTab, status]);
+
+  // Active/Inactive counts scoped to the selected role tab — fetched separately
+  // since the list query's own status pill filter would otherwise shrink these.
+  const fetchRoleStats = useCallback(async () => {
+    try {
+      const [activeRes, inactiveRes] = await Promise.all([
+        api.get('/api/admin/ad-notifications', { params: { role: activeNotifTab, status: 'active', limit: 1 } }),
+        api.get('/api/admin/ad-notifications', { params: { role: activeNotifTab, status: 'inactive', limit: 1 } }),
+      ]);
+      setRoleStats({
+        active:   activeRes.data?.pagination?.total ?? 0,
+        inactive: inactiveRes.data?.pagination?.total ?? 0,
+      });
+    } catch {
+      // keep previous stats on failure
+    }
+  }, [activeNotifTab]);
+
+  useEffect(() => { fetchRoleStats(); }, [fetchRoleStats]);
 
   useEffect(() => {
     fetchNotifications(page);
@@ -866,18 +896,19 @@ const GlobalNotificationsTab = () => {
 
   const onPage = (n) => { setPage(n); fetchNotifications(n); };
 
-  const onRoleChange = (r) => { setRole(r); setPage(1); };
   const onStatusChange = (s) => { setStatus(s); setPage(1); };
 
   const handleCreated = () => {
     setShowCreate(false);
     fetchNotifications(1);
+    fetchRoleStats();
     setPage(1);
   };
 
   const handleUpdated = () => {
     setEditTarget(null);
     fetchNotifications(page);
+    fetchRoleStats();
   };
 
   const confirmDelete = async () => {
@@ -888,6 +919,7 @@ const GlobalNotificationsTab = () => {
       await api.delete(`/api/admin/ad-notifications/${deleteTarget._id}`);
       setDeleteTarget(null);
       fetchNotifications(page);
+      fetchRoleStats();
     } catch (err) {
       setDeleteError(err.response?.data?.message || 'Failed to delete notification');
     } finally {
@@ -896,18 +928,19 @@ const GlobalNotificationsTab = () => {
   };
 
   const STAT_CARDS = [
-    { label: 'Total',              value: pagination.total,             Icon: Bell,        cls: 'bg-neutral-900 text-white' },
-    { label: 'Host Notifications', value: summary.hostNotifications,    Icon: Crown,       cls: 'bg-amber-50 text-amber-800 border border-amber-200' },
-    { label: 'User Notifications', value: summary.userNotifications,    Icon: Users,       cls: 'bg-blue-50 text-blue-800 border border-blue-200' },
-    { label: 'Active',             value: summary.active,               Icon: PlayCircle,  cls: 'bg-green-50 text-green-800 border border-green-200' },
-    { label: 'Inactive',           value: summary.inactive,             Icon: PauseCircle, cls: 'bg-neutral-100 text-neutral-600 border border-neutral-200' },
+    { label: 'Total', value: roleStats.active + roleStats.inactive, Icon: Bell, cls: 'bg-neutral-900 text-white' },
+    activeNotifTab === 'host'
+      ? { label: 'Host Notifications', value: roleStats.active + roleStats.inactive, Icon: Crown, cls: 'bg-amber-50 text-amber-800 border border-amber-200' }
+      : { label: 'User Notifications', value: roleStats.active + roleStats.inactive, Icon: Users, cls: 'bg-blue-50 text-blue-800 border border-blue-200' },
+    { label: 'Active',   value: roleStats.active,   Icon: PlayCircle,  cls: 'bg-green-50 text-green-800 border border-green-200' },
+    { label: 'Inactive', value: roleStats.inactive, Icon: PauseCircle, cls: 'bg-neutral-100 text-neutral-600 border border-neutral-200' },
   ];
 
   return (
     <div className="space-y-4 sm:space-y-6">
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         {STAT_CARDS.map(({ label, value, Icon, cls }) => (
           <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${cls}`}>
             <div className="flex items-start justify-between">
@@ -922,17 +955,27 @@ const GlobalNotificationsTab = () => {
       {/* Main card */}
       <div className="rounded-2xl border border-neutral-200 bg-white">
 
+        {/* Host / User tabs */}
+        <div className="flex border-b border-neutral-200 px-2 sm:px-4">
+          {NOTIFICATION_TABS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveNotifTab(id)}
+              className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition ${
+                activeNotifTab === id
+                  ? '-mb-px border-black text-neutral-900'
+                  : 'border-transparent text-neutral-400 hover:text-neutral-700'
+              }`}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Toolbar */}
         <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <div className="flex flex-wrap items-center gap-1.5">
-            {ROLE_FILTERS.map(({ value, label }) => (
-              <button key={value} onClick={() => onRoleChange(value)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  role === value ? 'bg-neutral-800 text-white' : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
-                }`}>
-                {label}
-              </button>
-            ))}
             {STATUS_FILTERS.map(({ value, label }) => (
               <button key={value} onClick={() => onStatusChange(value)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
@@ -954,9 +997,9 @@ const GlobalNotificationsTab = () => {
             </button>
             <button
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-80"
+              className="flex items-center gap-1.5 rounded-lg bg-black px-3 py-2.5 text-xs font-medium text-white transition hover:opacity-80"
             >
-              <Plus size={13} /> New Notification
+              <Plus size={13} /> {activeNotifTab === 'host' ? 'Host' : 'User'} Notification
             </button>
           </div>
         </div>
@@ -980,7 +1023,7 @@ const GlobalNotificationsTab = () => {
           <div className="py-16 text-center">
             <Bell size={36} className="mx-auto mb-3 text-neutral-200" />
             <p className="text-sm font-medium text-neutral-400">
-              {role || status ? 'No notifications match your filters' : 'No global notifications yet'}
+              {status ? 'No notifications match your filters' : `No ${activeNotifTab} notifications yet`}
             </p>
             <p className="mt-1 text-xs text-neutral-300">Created notifications will appear here</p>
           </div>
@@ -1059,7 +1102,7 @@ const GlobalNotificationsTab = () => {
       </div>
 
       {showCreate && (
-        <NotificationFormModal onClose={() => setShowCreate(false)} onSuccess={handleCreated} />
+        <NotificationFormModal defaultRole={activeNotifTab} onClose={() => setShowCreate(false)} onSuccess={handleCreated} />
       )}
 
       {editTarget && (

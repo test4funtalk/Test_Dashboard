@@ -40,8 +40,8 @@ const STATUS_OPTIONS = [
   { value: 'missed',     label: 'Missed'       },
   { value: 'rejected',   label: 'Rejected'     },
   { value: 'cancelled',  label: 'Cancelled'    },
-  { value: 'ongoing',    label: 'Ongoing'      },
-  { value: 'ringing',    label: 'Ringing'      },
+  { value: 'ongoing',    label: 'Active'       },
+  { value: 'ringing',    label: 'Pending'      },
 ];
 
 const TYPE_OPTIONS = [
