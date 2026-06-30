@@ -7,7 +7,8 @@ import {
 import api from '../../../services/api';
 
 const getTagName  = (t) => t?.name ?? String(t);
-const toLowerLetters = (val) => val.toLowerCase().replace(/[^a-z\s]/g, '');
+const toCapitalized = (val) =>
+  val.replace(/[^a-zA-Z\s]/g, '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 const getTagAdmin = (t) =>
   t?.createdBy?.username ?? t?.createdBy?.name ?? t?.adminUsername ?? t?.createdByUsername ?? null;
 
@@ -298,12 +299,12 @@ const TagsTab = () => {
                 <input
                   type="text"
                   value={addName}
-                  onChange={(e) => setAddName(toLowerLetters(e.target.value))}
-                  placeholder="e.g. gaming, music, travel…"
+                  onChange={(e) => setAddName(toCapitalized(e.target.value))}
+                  placeholder="e.g. Gaming, Music, Travel…"
                   autoFocus
                   className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
                 />
-                <p className="mt-1.5 text-xs text-neutral-400">Lowercase letters only — duplicates are rejected.</p>
+                <p className="mt-1.5 text-xs text-neutral-400">Capitalized automatically — duplicates are rejected.</p>
               </div>
               <div className="flex gap-3">
                 <button
@@ -355,11 +356,11 @@ const TagsTab = () => {
                 <input
                   type="text"
                   value={editName}
-                  onChange={(e) => setEditName(toLowerLetters(e.target.value))}
+                  onChange={(e) => setEditName(toCapitalized(e.target.value))}
                   autoFocus
                   className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
                 />
-                <p className="mt-1.5 text-xs text-neutral-400">Lowercase letters only.</p>
+                <p className="mt-1.5 text-xs text-neutral-400">Capitalized automatically.</p>
               </div>
               <div className="flex gap-3">
                 <button

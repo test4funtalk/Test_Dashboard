@@ -4,7 +4,7 @@ import {
   Megaphone, PlayCircle, PauseCircle, Crown, Users, Search,
   RefreshCw, Plus, X, AlertCircle, Loader2, ChevronLeft, ChevronRight,
   Image as ImageIcon, Video, Trash2, Eye, Upload, FileVideo, ImageOff, Pencil,
-  Bell, Send, BellOff,
+  Bell, Send, BellOff, RotateCw,
 } from 'lucide-react';
 import api from '../../../services/api';
 
@@ -814,6 +814,34 @@ const DeleteNotificationModal = ({ notification, onCancel, onConfirm, busy }) =>
   </div>
 );
 
+// ─── resend notification confirm modal ──────────────────────────────────────────
+
+const ResendNotificationModal = ({ notification, onCancel, onConfirm, busy }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100">
+        <Send size={22} className="text-blue-600" />
+      </div>
+      <h3 className="text-base font-bold">{notification.pushSent ? 'Resend' : 'Send'} "{notification.title}"?</h3>
+      <p className="mt-1.5 text-sm text-neutral-500">
+        This pushes the notification via FCM to every {notification.role === 'host' ? 'host' : 'user'} device that matches.
+        {notification.pushSent && ' Already-notified devices will receive it again.'}
+      </p>
+      <div className="mt-5 flex gap-3">
+        <button onClick={onCancel} disabled={busy}
+          className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50 disabled:opacity-50">
+          Cancel
+        </button>
+        <button onClick={onConfirm} disabled={busy}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-900 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:opacity-50">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          {busy ? 'Sending…' : notification.pushSent ? 'Resend Push' : 'Send Push'}
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 // ─── global notification tab ────────────────────────────────────────────────────
 
 const GlobalNotificationsTab = () => {
@@ -843,6 +871,11 @@ const GlobalNotificationsTab = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting]         = useState(false);
   const [deleteError, setDeleteError]   = useState(null);
+
+  const [resendTarget, setResendTarget]   = useState(null);
+  const [resending, setResending]         = useState(false);
+  const [resendError, setResendError]     = useState(null);
+  const [resendSuccess, setResendSuccess] = useState(null);
 
   const fetchNotifications = useCallback(async (targetPage = 1) => {
     setLoading(true);
@@ -926,6 +959,36 @@ const GlobalNotificationsTab = () => {
       setDeleting(false);
     }
   };
+
+  // Re-uses the update endpoint with unchanged fields (forcing status to active) —
+  // the backend re-pushes via FCM on every update where the notification stays active.
+  const confirmResend = async () => {
+    if (!resendTarget) return;
+    setResending(true);
+    setResendError(null);
+    try {
+      const { data } = await api.put(`/api/admin/ad-notifications/${resendTarget._id}`, {
+        title: resendTarget.title,
+        message: resendTarget.message,
+        role: resendTarget.role,
+        status: 'active',
+      });
+      setResendTarget(null);
+      setResendSuccess(data?.message || 'Notification sent');
+      fetchNotifications(page);
+      fetchRoleStats();
+    } catch (err) {
+      setResendError(err.response?.data?.message || 'Failed to resend notification');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!resendSuccess) return;
+    const t = setTimeout(() => setResendSuccess(null), 3000);
+    return () => clearTimeout(t);
+  }, [resendSuccess]);
 
   const STAT_CARDS = [
     { label: 'Total', value: roleStats.active + roleStats.inactive, Icon: Bell, cls: 'bg-neutral-900 text-white' },
@@ -1063,6 +1126,14 @@ const GlobalNotificationsTab = () => {
                     <td className="border border-neutral-200 px-4 py-3 text-right">
                       <div className="flex justify-end gap-1.5">
                         <button
+                          onClick={() => { setResendError(null); setResendTarget(n); }}
+                          disabled={n.status !== 'active'}
+                          title={n.status !== 'active' ? 'Activate this notification to send' : n.pushSent ? 'Resend push notification' : 'Send push notification'}
+                          className="rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-medium text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <RotateCw size={12} />
+                        </button>
+                        <button
                           onClick={() => setEditTarget(n)}
                           className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition hover:border-neutral-400 hover:bg-neutral-50"
                         >
@@ -1122,9 +1193,30 @@ const GlobalNotificationsTab = () => {
         />
       )}
 
+      {resendTarget && (
+        <ResendNotificationModal
+          notification={resendTarget}
+          busy={resending}
+          onCancel={() => { if (!resending) setResendTarget(null); }}
+          onConfirm={confirmResend}
+        />
+      )}
+
       {deleteError && (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 shadow-lg">
           <AlertCircle size={15} /> {deleteError}
+        </div>
+      )}
+
+      {resendError && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 shadow-lg">
+          <AlertCircle size={15} /> {resendError}
+        </div>
+      )}
+
+      {resendSuccess && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-lg">
+          <Send size={15} /> {resendSuccess}
         </div>
       )}
     </div>

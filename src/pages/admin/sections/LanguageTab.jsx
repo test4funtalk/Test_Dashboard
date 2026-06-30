@@ -6,7 +6,8 @@ import {
 import api from '../../../services/api';
 
 const getLangName = (l) => l?.name ?? l?.languageName ?? l?.language ?? String(l);
-const toLowerLetters = (val) => val.toLowerCase().replace(/[^a-z\s]/g, '');
+const toCapitalized = (val) =>
+  val.replace(/[^a-zA-Z\s]/g, '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 
 // ─── main section ─────────────────────────────────────────────────────────────
 
@@ -245,12 +246,12 @@ const LanguageTab = () => {
                 <input
                   type="text"
                   value={addName}
-                  onChange={(e) => setAddName(toLowerLetters(e.target.value))}
-                  placeholder="e.g. tamil, hindi, french…"
+                  onChange={(e) => setAddName(toCapitalized(e.target.value))}
+                  placeholder="e.g. Tamil, Hindi, French…"
                   autoFocus
                   className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
                 />
-                <p className="mt-1.5 text-xs text-neutral-400">Lowercase letters only.</p>
+                <p className="mt-1.5 text-xs text-neutral-400">Capitalized automatically.</p>
               </div>
               <div className="flex gap-3">
                 <button
@@ -302,11 +303,11 @@ const LanguageTab = () => {
                 <input
                   type="text"
                   value={editName}
-                  onChange={(e) => setEditName(toLowerLetters(e.target.value))}
+                  onChange={(e) => setEditName(toCapitalized(e.target.value))}
                   autoFocus
                   className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
                 />
-                <p className="mt-1.5 text-xs text-neutral-400">Lowercase letters only.</p>
+                <p className="mt-1.5 text-xs text-neutral-400">Capitalized automatically.</p>
               </div>
               <div className="flex gap-3">
                 <button
