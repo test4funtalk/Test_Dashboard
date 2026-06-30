@@ -48,6 +48,15 @@ const fmtINR = (amount) => {
   }).format(Number(amount));
 };
 
+// Only the first character is capitalized — every other character, including
+// later words, is forced lowercase. Matches the rule used in Profile Management's
+// Language/Tags tabs, applied here to mother-tongue language display.
+const formatLangDisplay = (val) => {
+  if (!val) return val;
+  const lower = String(val).toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+};
+
 const CALL_STATUS_STYLES = {
   ended:     'bg-neutral-100 text-neutral-600',
   missed:    'bg-red-100 text-red-600',
@@ -162,7 +171,7 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
         )}
         {validChips.map((lang) => (
           <span key={lang} className="flex items-center gap-1 rounded-full bg-neutral-900 px-2.5 py-0.5 text-xs font-medium text-white">
-            {lang}
+            {formatLangDisplay(lang)}
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); toggle(lang); }}
@@ -215,7 +224,7 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
                       onChange={() => toggle(name)}
                       className="h-4 w-4 rounded accent-black"
                     />
-                    <span className="text-sm capitalize">{name}</span>
+                    <span className="text-sm">{formatLangDisplay(name)}</span>
                   </label>
                 );
               })
@@ -2048,7 +2057,7 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
           <InfoRow icon={Globe}      label="Mother Tongue" value={
             user.motherTongue?.length
               ? <div className="flex flex-wrap gap-1 mt-0.5">{user.motherTongue.map((l) => (
-                  <span key={l} className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs">{l}</span>
+                  <span key={l} className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs">{formatLangDisplay(l)}</span>
                 ))}</div>
               : '—'
           } />

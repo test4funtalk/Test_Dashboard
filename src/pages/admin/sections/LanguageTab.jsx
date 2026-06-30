@@ -6,8 +6,19 @@ import {
 import api from '../../../services/api';
 
 const getLangName = (l) => l?.name ?? l?.languageName ?? l?.language ?? String(l);
-const toCapitalized = (val) =>
-  val.replace(/[^a-zA-Z\s]/g, '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+// Only the first character is capitalized — every other character, including
+// later words, is forced lowercase (not per-word Title Case).
+const toCapitalized = (val) => {
+  const cleaned = val.replace(/[^a-zA-Z\s]/g, '').toLowerCase();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+};
+// Same case rule applied when displaying already-stored values (e.g. older
+// records saved before this rule existed) — does not strip characters.
+const formatDisplay = (val) => {
+  if (!val) return val;
+  const lower = String(val).toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+};
 
 // ─── main section ─────────────────────────────────────────────────────────────
 
@@ -192,11 +203,11 @@ const LanguageTab = () => {
                       <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-sm font-bold text-neutral-700">
                         {name.charAt(0).toUpperCase()}
                       </div>
-                      <span className="truncate text-sm font-medium">{name}</span>
+                      <span className="truncate text-sm font-medium">{formatDisplay(name)}</span>
                     </div>
                     <div className="ml-2 flex flex-shrink-0 items-center gap-1.5">
                       <button
-                        onClick={() => { setEditTarget(lang); setEditName(name); setEditError(null); }}
+                        onClick={() => { setEditTarget(lang); setEditName(formatDisplay(name)); setEditError(null); }}
                         title="Edit"
                         className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-900"
                       >
@@ -338,7 +349,7 @@ const LanguageTab = () => {
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100">
               <Trash2 size={22} className="text-red-600" />
             </div>
-            <h3 className="text-base font-bold">Delete "{getLangName(deleteTarget)}"?</h3>
+            <h3 className="text-base font-bold">Delete "{formatDisplay(getLangName(deleteTarget))}"?</h3>
             <p className="mt-1.5 text-sm text-neutral-500">
               This permanently removes the language from the platform.
             </p>

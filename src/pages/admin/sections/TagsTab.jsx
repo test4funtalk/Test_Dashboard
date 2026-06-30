@@ -7,8 +7,19 @@ import {
 import api from '../../../services/api';
 
 const getTagName  = (t) => t?.name ?? String(t);
-const toCapitalized = (val) =>
-  val.replace(/[^a-zA-Z\s]/g, '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+// Only the first character is capitalized — every other character, including
+// later words, is forced lowercase (not per-word Title Case).
+const toCapitalized = (val) => {
+  const cleaned = val.replace(/[^a-zA-Z\s]/g, '').toLowerCase();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+};
+// Same case rule applied when displaying already-stored values (e.g. older
+// records saved before this rule existed) — does not strip characters.
+const formatDisplay = (val) => {
+  if (!val) return val;
+  const lower = String(val).toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+};
 const getTagAdmin = (t) =>
   t?.createdBy?.username ?? t?.createdBy?.name ?? t?.adminUsername ?? t?.createdByUsername ?? null;
 
@@ -220,13 +231,13 @@ const TagsTab = () => {
                         {name.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{name}</p>
+                        <p className="truncate text-sm font-medium">{formatDisplay(name)}</p>
                         {admin && <p className="truncate text-xs text-neutral-400">by {admin}</p>}
                       </div>
                     </div>
                     <div className="ml-2 flex flex-shrink-0 items-center gap-1.5">
                       <button
-                        onClick={() => { setEditTarget(tag); setEditName(name); setEditError(null); }}
+                        onClick={() => { setEditTarget(tag); setEditName(formatDisplay(name)); setEditError(null); }}
                         title="Rename"
                         className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-900"
                       >
@@ -391,7 +402,7 @@ const TagsTab = () => {
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100">
               <Trash2 size={22} className="text-red-600" />
             </div>
-            <h3 className="text-base font-bold">Delete "{getTagName(deleteTarget)}"?</h3>
+            <h3 className="text-base font-bold">Delete "{formatDisplay(getTagName(deleteTarget))}"?</h3>
             <p className="mt-1.5 text-sm text-neutral-500">
               This removes the tag from the platform and from every user profile that has it.
             </p>
