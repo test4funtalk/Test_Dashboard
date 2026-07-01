@@ -30,8 +30,8 @@ const CALL_STATUS_STYLES = {
   missed:    'bg-red-100 text-red-600',
   rejected:  'bg-red-100 text-red-600',
   cancelled: 'bg-orange-100 text-orange-600',
-  ongoing:   'bg-blue-100 text-blue-600',
-  ringing:   'bg-amber-100 text-amber-700',
+  active:    'bg-blue-100 text-blue-600',
+  pending:   'bg-amber-100 text-amber-700',
 };
 
 const STATUS_OPTIONS = [
@@ -40,8 +40,8 @@ const STATUS_OPTIONS = [
   { value: 'missed',     label: 'Missed'       },
   { value: 'rejected',   label: 'Rejected'     },
   { value: 'cancelled',  label: 'Cancelled'    },
-  { value: 'ongoing',    label: 'Active'       },
-  { value: 'ringing',    label: 'Pending'      },
+  { value: 'active',     label: 'Active'       },
+  { value: 'pending',    label: 'Pending'      },
 ];
 
 const TYPE_OPTIONS = [
