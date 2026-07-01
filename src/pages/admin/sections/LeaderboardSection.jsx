@@ -3,8 +3,12 @@ import {
   Trophy, RefreshCw, Loader2, AlertCircle, Gift, PhoneCall,
   Coins, Clock, Banknote, TrendingUp, BarChart3, Star,
   ChevronLeft, ChevronRight, MessageSquare, Video, Phone,
-  Search, X, Wifi, WifiOff, Eye, History,
+  Search, X, Wifi, WifiOff, Eye, History, Activity,
 } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell,
+} from 'recharts';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
 import { getLanguages } from '../../../services/languageService';
@@ -245,6 +249,27 @@ const TopHostsTab = () => {
 
 // ─── platform stats tab ─────────────────────────────────────────────────────────
 
+const MetricBar = ({ label, value, max, pct, color, icon: Icon, subLabel }) => (
+  <div>
+    <div className="mb-2 flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${color.bg}`}>
+          <Icon size={12} className={color.icon} />
+        </div>
+        <span className="text-xs font-medium text-neutral-700">{label}</span>
+      </div>
+      <span className="text-sm font-bold text-neutral-900">{pct}%</span>
+    </div>
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+      <div
+        className={`h-full rounded-full transition-all duration-700 ${color.bar}`}
+        style={{ width: `${Math.min(pct, 100)}%` }}
+      />
+    </div>
+    <p className="mt-1 text-[10px] text-neutral-400">{subLabel}</p>
+  </div>
+);
+
 const PlatformStatsTab = () => {
   const [stats, setStats]     = useState(null);
   const [loading, setLoading] = useState(false);
@@ -265,27 +290,35 @@ const PlatformStatsTab = () => {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
-  const tiles = [
-    { label: 'Total Calls',         value: fmtNum(stats?.calls?.total),  Icon: PhoneCall, cls: 'bg-neutral-900 text-white' },
-    { label: 'Active Calls',        value: fmtNum(stats?.calls?.active), Icon: PhoneCall, cls: 'border border-neutral-200 bg-white' },
-    { label: 'Ended Calls',         value: fmtNum(stats?.calls?.ended),  Icon: PhoneCall, cls: 'border border-neutral-200 bg-white' },
-    { label: 'Total Coins Deducted', value: fmtNum(stats?.billing?.totalCoinsDeducted), Icon: Coins, cls: 'border border-neutral-200 bg-white' },
-    { label: 'Total Cash Earned',   value: fmtINR(stats?.billing?.totalCashEarned), Icon: Banknote, cls: 'border border-green-200 bg-green-50' },
-    { label: 'Total Gifts Sent',    value: fmtNum(stats?.gifts?.total), Icon: Gift, cls: 'border border-neutral-200 bg-white' },
-    { label: 'Total Ratings',       value: fmtNum(stats?.ratings?.total), Icon: Star, cls: 'border border-neutral-200 bg-white' },
-  ];
+  const calls   = stats?.calls   ?? {};
+  const billing = stats?.billing ?? {};
+  const gifts   = stats?.gifts   ?? {};
+  const ratings = stats?.ratings ?? {};
+
+  const callTotal       = calls.total ?? 0;
+  const successRate     = callTotal > 0 ? Math.round(((calls.ended   ?? 0) / callTotal) * 100) : 0;
+  const activeRate      = callTotal > 0 ? Math.round(((calls.active  ?? 0) / callTotal) * 100) : 0;
+  const giftRate        = callTotal > 0 ? Math.min(Math.round(((gifts.total ?? 0) / callTotal) * 100), 100) : 0;
+  const avgRatingPct    = ratings.averageScore != null ? Math.round((ratings.averageScore / 5) * 100) : 0;
+
+  const callBreakdown = [
+    { name: 'Ended',     value: calls.ended     ?? 0, fill: '#737373' },
+    { name: 'Active',    value: calls.active    ?? 0, fill: '#3b82f6' },
+    { name: 'Missed',    value: calls.missed    ?? 0, fill: '#ef4444' },
+    { name: 'Rejected',  value: calls.rejected  ?? 0, fill: '#f97316' },
+    { name: 'Cancelled', value: calls.cancelled ?? 0, fill: '#eab308' },
+  ].filter((d) => d.value > 0);
+
+  const dash = (v) => (loading && !stats ? '—' : v);
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-900">
-            <BarChart3 size={16} className="text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-neutral-900">System-Wide Stats</p>
-            <p className="text-xs text-neutral-400">High-level counters across the whole platform</p>
-          </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold text-neutral-900">Platform Status</h2>
+          <p className="text-xs text-neutral-400">Real-time overview of your platform performance</p>
         </div>
         <button
           onClick={fetchStats}
@@ -302,16 +335,239 @@ const PlatformStatsTab = () => {
         </div>
       )}
 
+      {/* ── Row 1: 4 KPI hero cards ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {tiles.map(({ label, value, Icon, cls }) => (
-          <div key={label} className={`rounded-2xl p-3 sm:p-4 ${cls}`}>
-            <div className="flex items-start justify-between">
-              <p className="text-lg font-black sm:text-xl">{loading && !stats ? '—' : value}</p>
-              <Icon size={16} className="opacity-40" />
-            </div>
-            <p className="mt-0.5 text-xs font-medium opacity-70">{label}</p>
+
+        {/* Total Cash Earned — hero dark */}
+        <div className="rounded-2xl bg-neutral-900 p-4 text-white sm:p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[11px] font-medium opacity-50 uppercase tracking-wide">Total Cash Earned</span>
+            <Banknote size={14} className="opacity-30" />
           </div>
-        ))}
+          <p className="text-xl font-black leading-tight sm:text-2xl">{dash(fmtINR(billing.totalCashEarned))}</p>
+          <div className="mt-2 flex items-center gap-1 text-[11px] opacity-50">
+            <TrendingUp size={11} /> All time
+          </div>
+        </div>
+
+        {/* Total Calls */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Total Calls</span>
+            <PhoneCall size={14} className="text-neutral-300" />
+          </div>
+          <p className="text-2xl font-black text-neutral-900 sm:text-3xl">{dash(fmtNum(callTotal))}</p>
+          <div className="mt-2 flex items-center gap-1 text-[11px]">
+            <span className="font-semibold text-blue-500">{fmtNum(calls.active ?? 0)}</span>
+            <span className="text-neutral-400">active now</span>
+          </div>
+        </div>
+
+        {/* Coins Deducted */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Coins Deducted</span>
+            <Coins size={14} className="text-neutral-300" />
+          </div>
+          <p className="text-2xl font-black text-neutral-900 sm:text-3xl">{dash(fmtNum(billing.totalCoinsDeducted))}</p>
+          <div className="mt-2 text-[11px] text-neutral-400">lifetime total</div>
+        </div>
+
+        {/* Gifts + Ratings */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Gifts Sent</span>
+            <Gift size={14} className="text-neutral-300" />
+          </div>
+          <p className="text-2xl font-black text-neutral-900 sm:text-3xl">{dash(fmtNum(gifts.total))}</p>
+          <div className="mt-2 flex items-center gap-1 text-[11px] text-neutral-400">
+            <Star size={10} className="text-amber-400" />
+            {fmtNum(ratings.total)} ratings
+          </div>
+        </div>
+      </div>
+
+      {/* ── Row 2: Bar Chart + Operational Metrics ── */}
+      <div className="grid gap-4 lg:grid-cols-3">
+
+        {/* Call Status Bar Chart */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5 lg:col-span-2">
+          <div className="mb-1 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-neutral-900">Call Status Overview</p>
+              <p className="text-xs text-neutral-400">Real-time breakdown of all call outcomes</p>
+            </div>
+            <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" /> Live
+            </span>
+          </div>
+
+          {loading && !stats ? (
+            <div className="flex items-center justify-center py-20 text-neutral-300">
+              <Loader2 size={24} className="animate-spin" />
+            </div>
+          ) : callBreakdown.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-20 text-neutral-300">
+              <PhoneCall size={32} />
+              <p className="text-xs">No call data yet</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={210}>
+              <BarChart data={callBreakdown} margin={{ top: 8, right: 4, bottom: 0, left: -8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#a3a3a3' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#a3a3a3' }} axisLine={false} tickLine={false} width={44} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 10, border: '1px solid #e5e5e5', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,.06)' }}
+                  cursor={{ fill: '#f5f5f5', radius: 6 }}
+                />
+                <Bar dataKey="value" name="Calls" radius={[6, 6, 0, 0]} maxBarSize={64}>
+                  {callBreakdown.map((entry, i) => (
+                    <Cell key={i} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* legend dots */}
+          {!loading && callBreakdown.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-3">
+              {callBreakdown.map((d) => (
+                <span key={d.name} className="flex items-center gap-1.5 text-[11px] text-neutral-500">
+                  <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: d.fill }} />
+                  {d.name} <span className="font-semibold text-neutral-700">{fmtNum(d.value)}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Operational Metrics */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm font-semibold text-neutral-900">Operational Metrics</p>
+            <Activity size={14} className="text-neutral-300" />
+          </div>
+
+          {loading && !stats ? (
+            <div className="flex items-center justify-center py-16 text-neutral-300">
+              <Loader2 size={20} className="animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <MetricBar
+                label="Call Success Rate"
+                pct={successRate}
+                color={{ bg: 'bg-blue-100', icon: 'text-blue-600', bar: 'bg-blue-500' }}
+                icon={PhoneCall}
+                subLabel={`${fmtNum(calls.ended ?? 0)} ended of ${fmtNum(callTotal)} total`}
+              />
+              <MetricBar
+                label="Live Activity"
+                pct={activeRate}
+                color={{ bg: 'bg-green-100', icon: 'text-green-600', bar: 'bg-green-500' }}
+                icon={Wifi}
+                subLabel={`${fmtNum(calls.active ?? 0)} active calls right now`}
+              />
+              <MetricBar
+                label="Gift Engagement"
+                pct={giftRate}
+                color={{ bg: 'bg-pink-100', icon: 'text-pink-600', bar: 'bg-pink-400' }}
+                icon={Gift}
+                subLabel={`${fmtNum(gifts.total ?? 0)} gifts across ${fmtNum(callTotal)} calls`}
+              />
+              <MetricBar
+                label="Avg Rating"
+                pct={avgRatingPct}
+                color={{ bg: 'bg-amber-100', icon: 'text-amber-600', bar: 'bg-amber-400' }}
+                icon={Star}
+                subLabel={`${ratings.averageScore != null ? Number(ratings.averageScore).toFixed(1) : '—'} / 5 · ${fmtNum(ratings.total)} reviews`}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Row 3: Call Details · Billing · Engagement ── */}
+      <div className="grid gap-3 sm:grid-cols-3">
+
+        {/* Call Details breakdown */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+            <PhoneCall size={12} /> Call Details
+          </p>
+          <div className="space-y-2.5">
+            {[
+              { label: 'Ended',     val: calls.ended,     dot: 'bg-neutral-400' },
+              { label: 'Active',    val: calls.active,    dot: 'bg-blue-500'    },
+              { label: 'Missed',    val: calls.missed,    dot: 'bg-red-500'     },
+              { label: 'Rejected',  val: calls.rejected,  dot: 'bg-orange-500'  },
+              { label: 'Cancelled', val: calls.cancelled, dot: 'bg-yellow-500'  },
+            ].map(({ label, val, dot }) => (
+              <div key={label} className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-xs text-neutral-500">
+                  <span className={`h-2 w-2 rounded-full flex-shrink-0 ${dot}`} /> {label}
+                </span>
+                <span className="text-xs font-semibold text-neutral-800">{dash(fmtNum(val))}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Billing summary */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+            <Banknote size={12} /> Billing
+          </p>
+          <div className="space-y-3">
+            <div className="rounded-xl bg-green-50 px-3 py-2.5">
+              <p className="text-[10px] font-medium text-green-600 mb-0.5">Cash Earned</p>
+              <p className="text-lg font-black text-green-700">{dash(fmtINR(billing.totalCashEarned))}</p>
+            </div>
+            <div className="rounded-xl bg-amber-50 px-3 py-2.5">
+              <p className="text-[10px] font-medium text-amber-600 mb-0.5">Coins Deducted</p>
+              <p className="text-lg font-black text-amber-700">{dash(fmtNum(billing.totalCoinsDeducted))}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Gifts & Ratings */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+            <Gift size={12} /> Engagement
+          </p>
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-xs text-neutral-500"><Gift size={11} className="text-pink-500" /> Gifts Sent</span>
+              <span className="text-xs font-semibold text-neutral-800">{dash(fmtNum(gifts.total))}</span>
+            </div>
+            {gifts.totalCoins != null && (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-xs text-neutral-500"><Coins size={11} className="text-amber-500" /> Gift Coins</span>
+                <span className="text-xs font-semibold text-neutral-800">{dash(fmtNum(gifts.totalCoins))}</span>
+              </div>
+            )}
+            {gifts.totalCash != null && (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-xs text-neutral-500"><Banknote size={11} className="text-green-500" /> Gift Cash</span>
+                <span className="text-xs font-semibold text-neutral-800">{dash(fmtINR(gifts.totalCash))}</span>
+              </div>
+            )}
+            <div className="border-t border-neutral-50 pt-2">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-xs text-neutral-500"><Star size={11} className="text-amber-400" /> Total Ratings</span>
+                <span className="text-xs font-semibold text-neutral-800">{dash(fmtNum(ratings.total))}</span>
+              </div>
+              {ratings.averageScore != null && (
+                <div className="flex items-center justify-between mt-2">
+                  <span className="flex items-center gap-2 text-xs text-neutral-500"><Star size={11} className="text-amber-400" /> Avg Score</span>
+                  <span className="text-xs font-semibold text-amber-600">{Number(ratings.averageScore).toFixed(1)} / 5</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -39,6 +39,37 @@ const STATUS_FILTERS = [
 
 const VALID_STATUSES = new Set(STATUS_FILTERS.map((s) => s.value));
 
+const PERIOD_FILTERS = [
+  { id: 'all',       label: 'All Time'     },
+  { id: 'today',     label: 'Today'        },
+  { id: 'yesterday', label: 'Yesterday'    },
+  { id: 'thisWeek',  label: 'This Week'    },
+  { id: 'thisMonth', label: 'This Month'   },
+  { id: 'custom',    label: 'Custom Range' },
+];
+
+const getPeriodParams = (period, from, to) => {
+  if (!period || period === 'all') return {};
+  if (period === 'custom') {
+    const params = {};
+    if (from) params.startDate = new Date(from).toISOString();
+    if (to)   params.endDate   = new Date(to + 'T23:59:59').toISOString();
+    return params;
+  }
+  const now        = new Date();
+  const dayMs      = 86400000;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === 'today')
+    return { startDate: todayStart.toISOString(), endDate: new Date(todayStart.getTime() + dayMs - 1).toISOString() };
+  if (period === 'yesterday')
+    return { startDate: new Date(todayStart.getTime() - dayMs).toISOString(), endDate: new Date(todayStart.getTime() - 1).toISOString() };
+  if (period === 'thisWeek')
+    return { startDate: new Date(todayStart.getTime() - todayStart.getDay() * dayMs).toISOString(), endDate: now.toISOString() };
+  if (period === 'thisMonth')
+    return { startDate: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(), endDate: now.toISOString() };
+  return {};
+};
+
 // ─── sub-components ───────────────────────────────────────────────────────────
 
 const StatusBadge = ({ status }) => {
@@ -122,15 +153,19 @@ const PaymentManagementSection = () => {
     setPage(1);
   }, [setSearchParams]);
 
-  const [purchases,  setPurchases]  = useState([]);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 0 });
-  const [stats,      setStats]      = useState({ total: 0, successCount: 0, pendingCount: 0, failedCount: 0, revenue: 0 });
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState(null);
+  const [purchases,    setPurchases]    = useState([]);
+  const [pagination,   setPagination]   = useState({ total: 0, page: 1, limit: 20, pages: 0 });
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState(null);
+  const [aggStats,     setAggStats]     = useState({ totalAmount: 0, totalCoins: 0, successCount: 0, pendingCount: 0, failedCount: 0 });
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const [page,   setPage]   = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [period,     setPeriod]     = useState('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo,   setCustomTo]   = useState('');
 
   const debounceRef = useRef(null);
   useEffect(() => {
@@ -146,13 +181,15 @@ const PaymentManagementSection = () => {
     setLoading(true);
     setError(null);
     try {
-      const params = { page: targetPage, limit: 20 };
+      const params = {
+        page: targetPage, limit: 20,
+        ...getPeriodParams(period, customFrom, customTo),
+      };
       if (activeStatus)    params.status = activeStatus;
       if (debouncedSearch) params.userId  = debouncedSearch;
 
       const { data } = await api.get('/api/purchase/admin/all', { params });
 
-      // Response shape: { success, data: [...], pagination: {...} }
       const rows = Array.isArray(data?.data) ? data.data : [];
       const pg   = data?.pagination ?? {};
 
@@ -163,30 +200,65 @@ const PaymentManagementSection = () => {
         limit: pg.limit  ?? 20,
         pages: pg.pages  ?? Math.ceil((pg.total ?? rows.length) / 20),
       });
-
-      // Derive stats from current page rows
-      const successRows = rows.filter((r) => r.status === 'success');
-      const pendingRows = rows.filter((r) => r.status === 'pending');
-      const failedRows  = rows.filter((r) => r.status === 'failed');
-      const revenue     = successRows.reduce((sum, r) => sum + (r.amount ?? 0), 0);
-      setStats({
-        total:        pg.total  ?? rows.length,
-        successCount: successRows.length,
-        pendingCount: pendingRows.length,
-        failedCount:  failedRows.length,
-        revenue,
-      });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to load purchases');
     } finally {
       setLoading(false);
     }
-  }, [activeStatus, debouncedSearch]);
+  }, [activeStatus, debouncedSearch, period, customFrom, customTo]);
+
+  // Paginate through ALL filtered records to compute accurate totals
+  const fetchAggStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const baseParams = {
+        limit: 100,
+        ...getPeriodParams(period, customFrom, customTo),
+      };
+      if (activeStatus)    baseParams.status = activeStatus;
+      if (debouncedSearch) baseParams.userId  = debouncedSearch;
+
+      let curPage = 1;
+      let totalPages = 1;
+      let totalAmount = 0;
+      let totalCoins  = 0;
+      let successCount = 0;
+      let pendingCount = 0;
+      let failedCount  = 0;
+      const MAX_PAGES = 20;
+
+      do {
+        const { data } = await api.get('/api/purchase/admin/all', { params: { ...baseParams, page: curPage } });
+        const rows = Array.isArray(data?.data) ? data.data : [];
+        const pg   = data?.pagination ?? {};
+        totalPages = pg.pages ?? 1;
+
+        rows.forEach((r) => {
+          totalAmount += r.amount ?? 0;
+          totalCoins  += r.coins  ?? 0;
+          if (r.status === 'success') successCount++;
+          else if (r.status === 'pending') pendingCount++;
+          else if (r.status === 'failed')  failedCount++;
+        });
+
+        if (rows.length === 0) break;
+        curPage++;
+      } while (curPage <= totalPages && curPage <= MAX_PAGES);
+
+      setAggStats({ totalAmount, totalCoins, successCount, pendingCount, failedCount });
+    } catch {
+      // stats silently stay at 0 on error
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [activeStatus, debouncedSearch, period, customFrom, customTo]);
 
   useEffect(() => {
     fetchPurchases(page);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchPurchases]);
+
+  useEffect(() => { fetchAggStats(); }, [fetchAggStats]);
 
   const onPage = (n) => {
     setPage(n);
@@ -195,85 +267,150 @@ const PaymentManagementSection = () => {
 
   // ─── render ─────────────────────────────────────────────────────────────────
 
-  const STAT_CARDS = [
-    {
-      label: 'Page Revenue',
-      value: fmtAmount(stats.revenue),
-      Icon: IndianRupee,
-      cls: 'bg-neutral-900 text-white',
-    },
-    {
-      label: 'Successful',
-      value: stats.successCount,
-      Icon: CheckCircle,
-      cls: 'bg-green-50 text-green-800 border border-green-200',
-    },
-    {
-      label: 'Pending',
-      value: stats.pendingCount,
-      Icon: Clock,
-      cls: 'bg-amber-50 text-amber-800 border border-amber-200',
-    },
-    {
-      label: 'Failed',
-      value: stats.failedCount,
-      Icon: XCircle,
-      cls: 'bg-red-50 text-red-800 border border-red-200',
-    },
-  ];
-
   return (
     <div className="space-y-4 sm:space-y-6">
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {STAT_CARDS.map(({ label, value, Icon, cls }) => (
-          <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${cls}`}>
-            <div className="flex items-start justify-between">
-              <p className="text-2xl font-black sm:text-3xl">{value}</p>
-              <Icon size={18} className="opacity-50" />
-            </div>
-            <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1 sm:text-sm">{label}</p>
+        {/* Total Purchase Amount */}
+        <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-5">
+          <div className="flex items-start justify-between">
+            {statsLoading
+              ? <Loader2 size={22} className="animate-spin opacity-50 mt-1" />
+              : <p className="text-xl font-black sm:text-2xl leading-tight">{fmtAmount(aggStats.totalAmount)}</p>
+            }
+            <IndianRupee size={18} className="opacity-40 flex-shrink-0" />
           </div>
-        ))}
+          <p className="mt-1 text-xs font-medium opacity-60 sm:text-sm">Total Amount</p>
+        </div>
+
+        {/* Total Coins */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 sm:rounded-2xl sm:p-5">
+          <div className="flex items-start justify-between">
+            {statsLoading
+              ? <Loader2 size={22} className="animate-spin text-amber-400 mt-1" />
+              : <p className="text-2xl font-black text-amber-700 sm:text-3xl">{aggStats.totalCoins.toLocaleString()}</p>
+            }
+            <Coins size={18} className="text-amber-400 opacity-60 flex-shrink-0" />
+          </div>
+          <p className="mt-0.5 text-xs font-medium text-amber-600 sm:mt-1 sm:text-sm">Total Coins</p>
+        </div>
+
+        {/* Successful */}
+        <div className="rounded-xl border border-green-200 bg-green-50 p-3 sm:rounded-2xl sm:p-5">
+          <div className="flex items-start justify-between">
+            {statsLoading
+              ? <Loader2 size={22} className="animate-spin text-green-400 mt-1" />
+              : <p className="text-2xl font-black text-green-700 sm:text-3xl">{aggStats.successCount}</p>
+            }
+            <CheckCircle size={18} className="text-green-400 opacity-60 flex-shrink-0" />
+          </div>
+          <p className="mt-0.5 text-xs font-medium text-green-600 sm:mt-1 sm:text-sm">Successful</p>
+        </div>
+
+        {/* Pending + Failed */}
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-5">
+          <div className="flex items-start justify-between">
+            {statsLoading
+              ? <Loader2 size={22} className="animate-spin text-neutral-400 mt-1" />
+              : <p className="text-2xl font-black text-neutral-700 sm:text-3xl">{pagination.total}</p>
+            }
+            <CreditCard size={18} className="text-neutral-400 opacity-60 flex-shrink-0" />
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 sm:mt-1">
+            <p className="text-xs font-medium text-neutral-500 sm:text-sm">Total Records</p>
+            {!statsLoading && (aggStats.pendingCount > 0 || aggStats.failedCount > 0) && (
+              <span className="flex items-center gap-1.5 text-[10px] text-neutral-400">
+                <span className="text-amber-500">{aggStats.pendingCount}p</span>
+                <span className="text-red-500">{aggStats.failedCount}f</span>
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Table card */}
       <div className="rounded-2xl border border-neutral-200 bg-white">
 
         {/* Toolbar */}
-        <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input
-              type="text"
-              placeholder="Filter by user ID…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
-            />
+        <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 sm:max-w-xs">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="text"
+                placeholder="Filter by user ID…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {STATUS_FILTERS.map(({ value, label }) => (
+                <button key={value} onClick={() => { setActiveStatus(value); }}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    activeStatus === value
+                      ? 'bg-neutral-900 text-white'
+                      : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+
+              {/* Period filter */}
+              <select
+                value={period}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPeriod(val);
+                  setPage(1);
+                  if (val !== 'custom') { setCustomFrom(''); setCustomTo(''); }
+                }}
+                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              >
+                {PERIOD_FILTERS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+
+              <button
+                onClick={() => fetchPurchases(page)}
+                disabled={loading}
+                title="Refresh"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-40"
+              >
+                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            {STATUS_FILTERS.map(({ value, label }) => (
-              <button key={value} onClick={() => setActiveStatus(value)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  activeStatus === value
-                    ? 'bg-neutral-900 text-white'
-                    : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
-                }`}>
-                {label}
-              </button>
-            ))}
-            <button
-              onClick={() => fetchPurchases(page)}
-              disabled={loading}
-              title="Refresh"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-40"
-            >
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            </button>
-          </div>
+          {/* Custom date range — visible only when Custom Range is selected */}
+          {period === 'custom' && (
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || undefined}
+                onChange={(e) => { setCustomFrom(e.target.value); setPage(1); }}
+                className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+              />
+              <span className="text-xs text-neutral-400">→</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={(e) => { setCustomTo(e.target.value); setPage(1); }}
+                className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+              />
+              {(customFrom || customTo) && (
+                <button
+                  onClick={() => { setCustomFrom(''); setCustomTo(''); setPage(1); }}
+                  className="text-xs text-neutral-400 hover:text-neutral-700 underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Error */}
@@ -424,6 +561,7 @@ const PaymentManagementSection = () => {
               {purchases.length} records on this page · {pagination.total} total
               {activeStatus && ` · status: ${activeStatus}`}
               {debouncedSearch && ` · user: ${debouncedSearch}`}
+              {period !== 'all' && ` · ${PERIOD_FILTERS.find((p) => p.id === period)?.label ?? period}`}
             </p>
           </div>
         )}
