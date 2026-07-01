@@ -148,9 +148,11 @@ const AdminDashboard = () => {
             sidebarOpen ? 'gap-3 px-4' : 'justify-center px-3'
           }`}
         >
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-black font-black text-lg text-white">
-            T
-          </div>
+          <img
+            src="/favicon.svg"
+            alt="Toppyz Dynamics"
+            className="h-14 w-14 flex-shrink-0 rounded-full object-contain"
+          />
           {sidebarOpen && (
             <div className="min-w-0">
               <p className=" text-base font-black ">Toppz Dynamics</p>
