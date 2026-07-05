@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Banknote, IndianRupee, Percent, Plus, Minus, Trash2, RefreshCw, Search,
   ChevronLeft, ChevronRight, AlertCircle, AlertTriangle, Loader2, X, Check, Ban, Pencil,
-  Landmark, FileText, Download, Receipt, Settings2, Wallet, TrendingUp, Gift,
+  Landmark, FileText, Download, Receipt, Settings2, Wallet, TrendingUp, Gift, CalendarDays,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -52,6 +52,16 @@ const PERIOD_FILTERS = [
 const DEDUCTION_TYPES = [
   { value: 'percent', label: '% of gross' },
   { value: 'flat',    label: '₹ flat'      },
+];
+
+const DAYS_OF_WEEK = [
+  { id: 'sunday',    short: 'Sun', full: 'Sunday'    },
+  { id: 'monday',    short: 'Mon', full: 'Monday'    },
+  { id: 'tuesday',   short: 'Tue', full: 'Tuesday'   },
+  { id: 'wednesday', short: 'Wed', full: 'Wednesday' },
+  { id: 'thursday',  short: 'Thu', full: 'Thursday'  },
+  { id: 'friday',    short: 'Fri', full: 'Friday'    },
+  { id: 'saturday',  short: 'Sat', full: 'Saturday'  },
 ];
 
 const MONTHS = [
@@ -449,6 +459,150 @@ const CheckoutConfigCard = () => {
               Add Deduction
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── checkout day config (allowed withdrawal days) ─────────────────────────────
+
+const CheckoutDayConfigCard = () => {
+  const [config, setConfig]             = useState(null);
+  const [selectedDays, setSelectedDays] = useState([]);
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState(null);
+  const [saving, setSaving]             = useState(false);
+  const [saveError, setSaveError]       = useState(null);
+  const [saved, setSaved]               = useState(false);
+
+  const loadConfig = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/api/admin/checkout-config');
+      const cfg = data?.data ?? null;
+      setConfig(cfg);
+      // withdrawalDayLabels is unambiguous ("Sunday", "Monday", ...); withdrawalDays
+      // may come back as numeric day-of-week indices (0=Sunday..6=Saturday) rather
+      // than the weekday-name strings the PUT endpoint expects, so labels win when present.
+      let days = [];
+      if (Array.isArray(cfg?.withdrawalDayLabels) && cfg.withdrawalDayLabels.length) {
+        days = cfg.withdrawalDayLabels.map((label) => String(label).toLowerCase());
+      } else if (Array.isArray(cfg?.withdrawalDays)) {
+        days = cfg.withdrawalDays
+          .map((d) => (typeof d === 'number' ? DAYS_OF_WEEK[d]?.id : String(d).toLowerCase()))
+          .filter(Boolean);
+      }
+      setSelectedDays(days);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load withdrawal day config');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadConfig(); }, [loadConfig]);
+
+  const toggleDay = (id) => {
+    setSaveError(null);
+    setSelectedDays((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
+  };
+
+  const allowEveryDay = () => { setSaveError(null); setSelectedDays([]); };
+
+  const saveDays = async () => {
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    try {
+      const { data } = await api.put('/api/admin/checkout-config', { withdrawalDays: selectedDays });
+      setConfig(data?.data ?? config);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(err.response?.data?.message || 'Failed to update withdrawal days');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CalendarDays size={15} className="text-neutral-400" />
+          <p className="text-sm font-semibold text-neutral-800">Checkout Day Config</p>
+        </div>
+        <button onClick={loadConfig} disabled={loading} title="Refresh"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {loading && !config ? (
+        <div className="flex items-center justify-center gap-2 py-10 text-neutral-400">
+          <Loader2 size={18} className="animate-spin" /> Loading config…
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+          <span className="flex items-center gap-2"><AlertCircle size={14} />{error}</span>
+          <button onClick={loadConfig} className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-xs font-medium">Retry</button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-xs text-neutral-500">
+            Choose which days of the week hosts are allowed to request a checkout/withdrawal. Leave none selected to allow every day.
+          </p>
+
+          <div className="flex flex-wrap gap-2">
+            {DAYS_OF_WEEK.map(({ id, short, full }) => (
+              <button
+                key={id}
+                type="button"
+                title={full}
+                onClick={() => toggleDay(id)}
+                className={`flex h-11 w-14 items-center justify-center rounded-xl border text-xs font-semibold transition ${
+                  selectedDays.includes(id)
+                    ? 'border-neutral-900 bg-neutral-900 text-white'
+                    : 'border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700'
+                }`}
+              >
+                {short}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={allowEveryDay}
+              disabled={selectedDays.length === 0}
+              className="text-xs font-medium text-neutral-500 underline decoration-dotted underline-offset-2 transition hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Allow every day
+            </button>
+            <button
+              onClick={saveDays}
+              disabled={saving}
+              className="flex items-center justify-center gap-2 rounded-xl bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-50"
+            >
+              {saving && <Loader2 size={13} className="animate-spin" />}
+              {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}
+            </button>
+          </div>
+
+          {saveError && (
+            <p className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+              <AlertCircle size={12} /> {saveError}
+            </p>
+          )}
+
+          <p className="text-xs text-neutral-400">
+            {selectedDays.length === 0
+              ? 'Every day is currently allowed for withdrawals.'
+              : `Allowed days: ${DAYS_OF_WEEK.filter((d) => selectedDays.includes(d.id)).map((d) => d.full).join(', ')}.`}
+          </p>
         </div>
       )}
     </div>
@@ -1280,10 +1434,11 @@ const HostInvoiceCard = () => {
 // ─── main section ─────────────────────────────────────────────────────────────
 
 const SECTION_TABS = [
-  { id: 'requests', label: 'Requests',          Icon: Banknote  },
-  { id: 'wallet',   label: 'Host Wallet',       Icon: Wallet    },
-  { id: 'invoice',  label: 'Invoice Generator', Icon: FileText  },
-  { id: 'config',   label: 'Checkout Config',   Icon: Settings2 },
+  { id: 'requests',  label: 'Requests',          Icon: Banknote     },
+  { id: 'wallet',    label: 'Host Wallet',       Icon: Wallet       },
+  { id: 'invoice',   label: 'Invoice Generator', Icon: FileText     },
+  { id: 'config',    label: 'Checkout Config',   Icon: Settings2    },
+  { id: 'dayconfig', label: 'Checkout Days',     Icon: CalendarDays },
 ];
 
 const CheckoutManagementSection = () => {
@@ -1596,6 +1751,8 @@ const CheckoutManagementSection = () => {
       {tab === 'invoice' && <HostInvoiceCard />}
 
       {tab === 'config' && <CheckoutConfigCard />}
+
+      {tab === 'dayconfig' && <CheckoutDayConfigCard />}
 
       {modalTarget && (
         <CheckoutActionModal

@@ -125,12 +125,16 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Auto-remove any selected values that no longer exist in the API list
+  // Auto-remove values not in the API list (case-insensitive), and canonicalise casing
   useEffect(() => {
     if (!languages.length) return;
-    const validSet = new Set(languages.map(getLangName));
-    const cleaned = value.filter((v) => validSet.has(v));
-    if (cleaned.length !== value.length) onChange(cleaned);
+    const lName  = (l) => l?.name ?? l?.languageName ?? l?.language ?? String(l);
+    const lwr    = new Map(languages.map((l) => [lName(l).toLowerCase(), lName(l)]));
+    const fixed  = value
+      .filter((v) => lwr.has(String(v).toLowerCase()))
+      .map((v) => lwr.get(String(v).toLowerCase()));
+    const changed = fixed.length !== value.length || fixed.some((f, i) => f !== value[i]);
+    if (changed) onChange(fixed);
   }, [languages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openDropdown = () => {
@@ -143,18 +147,30 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
 
   const getLangName = (l) => l?.name ?? l?.languageName ?? l?.language ?? String(l);
 
-  // Only chips whose name exists in the fetched list are shown
-  const validSet   = new Set(languages.map(getLangName));
-  const validChips = languages.length ? value.filter((v) => validSet.has(v)) : value;
+  // Case-insensitive lookup map: lowercase → canonical API name
+  const nameMap     = new Map(languages.map((l) => [getLangName(l).toLowerCase(), getLangName(l)]));
+  const validSetLwr = new Set(nameMap.keys());
+
+  // Auto-remove: use case-insensitive check
+  // (handled in the useEffect above; overridden here for consistency)
+  const validChips = languages.length
+    ? value.filter((v) => validSetLwr.has(String(v).toLowerCase()))
+    : value;
 
   const filtered = languages.filter((l) =>
     getLangName(l).toLowerCase().includes(search.toLowerCase())
   );
 
   const toggle = (name) => {
-    // Guard: only allow toggling names present in the API list
-    if (languages.length && !validSet.has(name)) return;
-    onChange(value.includes(name) ? value.filter((v) => v !== name) : [...value, name]);
+    const lower = String(name).toLowerCase();
+    if (languages.length && !validSetLwr.has(lower)) return;
+    // Always store the canonical (API-cased) name when adding
+    const canonical = nameMap.get(lower) ?? name;
+    const isSelected = value.some((v) => String(v).toLowerCase() === lower);
+    onChange(isSelected
+      ? value.filter((v) => String(v).toLowerCase() !== lower)
+      : [...value, canonical]
+    );
   };
 
   return (
@@ -212,7 +228,7 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
             ) : (
               filtered.map((lang) => {
                 const name = getLangName(lang);
-                const checked = value.includes(name);
+                const checked = value.some((v) => String(v).toLowerCase() === name.toLowerCase());
                 return (
                   <label
                     key={lang._id ?? name}
@@ -2266,19 +2282,25 @@ const UserManagementSection = () => {
 
   // ── handlers ────────────────────────────────────────────────────────────
 
+  const normLang = (l) => (typeof l === 'string' ? l : (l?.name ?? l?.languageName ?? l?.language ?? null));
+
   const openEdit = (user) => {
     setEditTarget(user);
     setEditForm({
-      username:          user.username          || '',
-      phone:             user.phone             || '',
-      dob:               user.dob ? new Date(user.dob).toISOString().slice(0, 10) : '',
-      gender:            user.gender            || '',
+      username:           user.username           || '',
+      phone:              user.phone              || '',
+      dob:                user.dob ? new Date(user.dob).toISOString().slice(0, 10) : '',
+      gender:             user.gender             || '',
       activateScreenlock: user.activateScreenlock || '',
-      motherTongue:      Array.isArray(user.motherTongue) ? [...user.motherTongue] : [],
-      role:              user.role              || 'user',
-      status:            user.status            || 'active',
-      avatar:            user.avatar            || '',
-      isVerified:        !!user.isVerified,
+      motherTongue:       Array.isArray(user.motherTongue)
+                            ? user.motherTongue.map(normLang).filter(Boolean)
+                            : user.motherTongue
+                              ? [normLang(user.motherTongue)].filter(Boolean)
+                              : [],
+      role:               user.role               || 'user',
+      status:             user.status             || 'active',
+      avatar:             user.avatar             || '',
+      isVerified:         !!user.isVerified,
     });
   };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, IndianRupee, RefreshCw, Loader2, AlertCircle,
@@ -305,15 +305,15 @@ const OverviewSection = () => {
         </div>
       </div>
 
-      {/* ── Middle: Area Chart  +  Platform Stats ── */}
+      {/* ── Middle: Cashflow Chart  +  Platform Stats ── */}
       <div className="grid gap-4 lg:grid-cols-3">
 
         {/* Treasury Overview area chart */}
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5 lg:col-span-2">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-bold text-neutral-900">Treasury Overview</p>
-              <p className="text-xs text-neutral-400">Real-time overview of your financial performance</p>
+              <p className="text-base font-black text-neutral-900">Treasury Overview</p>
+              <p className="mt-0.5 text-xs text-neutral-400">{periodLabel}</p>
             </div>
             <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
               {/* Period dropdown */}
@@ -370,7 +370,7 @@ const OverviewSection = () => {
             </div>
           )}
 
-          <div className="h-52 w-full sm:h-60">
+          <div style={{ height: 380 }} className="w-full">
             {chartLoading && chartData.length === 0 ? (
               <div className="flex h-full items-center justify-center text-neutral-300">
                 <Loader2 size={22} className="animate-spin" />
@@ -441,11 +441,11 @@ const OverviewSection = () => {
           ) : (
             <div className="space-y-2.5">
               {[
-                { label: 'Total Calls',     value: fmtNum(calls.total),              Icon: PhoneCall, iconCls: 'text-blue-500',   bg: 'bg-blue-50'   },
-                { label: 'Active Now',      value: fmtNum(calls.active),             Icon: Activity,  iconCls: 'text-green-500',  bg: 'bg-green-50'  },
-                { label: 'Total Gifts',     value: fmtNum(gifts.total),              Icon: Gift,      iconCls: 'text-pink-500',   bg: 'bg-pink-50'   },
-                { label: 'Total Ratings',   value: fmtNum(ratings.total),            Icon: Star,      iconCls: 'text-amber-500',  bg: 'bg-amber-50'  },
-                { label: 'Coins Deducted',  value: fmtNum(billing.totalCoinsDeducted), Icon: Coins,   iconCls: 'text-amber-600',  bg: 'bg-amber-50'  },
+                { label: 'Total Calls',    value: fmtNum(calls.total),                Icon: PhoneCall, iconCls: 'text-blue-500',  bg: 'bg-blue-50'  },
+                { label: 'Active Now',     value: fmtNum(calls.active),               Icon: Activity,  iconCls: 'text-green-500', bg: 'bg-green-50' },
+                { label: 'Total Gifts',    value: fmtNum(gifts.total),                Icon: Gift,      iconCls: 'text-pink-500',  bg: 'bg-pink-50'  },
+                { label: 'Total Ratings',  value: fmtNum(ratings.total),              Icon: Star,      iconCls: 'text-amber-500', bg: 'bg-amber-50' },
+                { label: 'Coins Deducted', value: fmtNum(billing.totalCoinsDeducted), Icon: Coins,     iconCls: 'text-amber-600', bg: 'bg-amber-50' },
               ].map(({ label, value, Icon, iconCls, bg }) => (
                 <div key={label} className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2.5">
                   <div className="flex items-center gap-2.5">
