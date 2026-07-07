@@ -985,10 +985,29 @@ const SCORE_OPTIONS = [
   { value: '1', label: '1 Star'  },
 ];
 
-const ROLE_OPTIONS = [
-  { value: '',     label: 'All Roles' },
-  { value: 'user', label: 'User'      },
-  { value: 'host', label: 'Host'      },
+// The two rating directions on the platform — a user rating the host after a call,
+// and a host rating the user after a call. Each gets its own ranking + filtered list.
+const RATING_DIRECTIONS = [
+  {
+    id: 'userToHost', label: 'User → Host', Icon: ArrowUpRight,
+    raterRole: 'user', rateeRole: 'host',
+    rankTitle: 'Top Rated Hosts', rankEmpty: 'No host ratings yet',
+    tableTitle: 'All Hosts by Rating', entityLabel: 'Host',
+  },
+  {
+    id: 'hostToUser', label: 'Host → User', Icon: ArrowDownRight,
+    raterRole: 'host', rateeRole: 'user',
+    rankTitle: 'Top Rated Users', rankEmpty: 'No user ratings yet',
+    tableTitle: 'All Users by Rating', entityLabel: 'User',
+  },
+];
+
+const RATING_PERIODS = [
+  { id: 'today',     label: 'Today'       },
+  { id: 'thisWeek',  label: 'This Week'   },
+  { id: 'thisMonth', label: 'This Month'  },
+  { id: 'allTime',   label: 'All Time'    },
+  { id: 'custom',    label: 'Custom Range' },
 ];
 
 const StarRow = ({ score }) => (
@@ -999,55 +1018,98 @@ const StarRow = ({ score }) => (
   </span>
 );
 
-// Hosts are ranked across the whole platform — pull every host-targeted rating
-// (paginating in large batches, capped for safety) and aggregate client-side,
-// since the API only exposes individual rating records, not a per-host rollup.
-const MAX_HOST_RATING_PAGES = 30;
-const HOST_RATING_PAGE_SIZE = 100;
+// Ratees are ranked across the whole platform — pull every rating for the requested
+// direction (paginating in large batches, capped for safety) and aggregate
+// client-side, since the API only exposes individual rating records, not a rollup.
+const MAX_RATING_PAGES = 30;
+const RATING_PAGE_SIZE = 100;
+
+const fetchRatingAggregate = async (raterRole, rateeRole, extraParams = {}) => {
+  const byRatee = new Map();
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const { data } = await api.get('/api/admin/ratings', {
+      params: { page, limit: RATING_PAGE_SIZE, raterRole, rateeRole, ...extraParams },
+    });
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.pagination?.pages ?? 1;
+    rows.forEach((r) => {
+      const id = r.rateeId?._id ?? r.rateeId;
+      if (!id || !r.score) return;
+      const entry = byRatee.get(id) || { host: r.rateeId, total: 0, count: 0 };
+      entry.total += r.score;
+      entry.count += 1;
+      entry.host = r.rateeId;
+      byRatee.set(id, entry);
+    });
+    page += 1;
+  } while (page <= totalPages && page <= MAX_RATING_PAGES);
+
+  return Array.from(byRatee.values())
+    .map((e) => ({ host: e.host, avgRating: e.total / e.count, count: e.count }))
+    .sort((a, b) => b.avgRating - a.avgRating || b.count - a.count);
+};
 
 const RatingsTab = () => {
-  const [hostRanking, setHostRanking] = useState([]);
+  const [direction, setDirection] = useState('userToHost');
+  const current = RATING_DIRECTIONS.find((d) => d.id === direction);
+
+  const [periodFilter, setPeriodFilter] = useState('allTime');
+  const [customStart, setCustomStart]   = useState('');
+  const [customEnd, setCustomEnd]       = useState('');
+
+  // shared by the podium, the ranking aggregation and the paginated list —
+  // resolves the active period/custom-range selection into API date params
+  const dateParams = useCallback(() => {
+    if (periodFilter === 'custom') {
+      return {
+        ...(customStart && { startDate: customStart }),
+        ...(customEnd   && { endDate: customEnd }),
+      };
+    }
+    if (periodFilter !== 'allTime') return { period: periodFilter };
+    return {};
+  }, [periodFilter, customStart, customEnd]);
+
+  // ── Animated "Top Rated Hosts" podium — always user→host, stays fixed across
+  //    both breakdown tabs below it; only the period filter affects it ──
+  const [hostPodium, setHostPodium]     = useState([]);
+  const [podiumLoading, setPodiumLoading] = useState(false);
+  const [podiumError, setPodiumError]     = useState(null);
+
+  const fetchHostPodium = useCallback(async () => {
+    setPodiumLoading(true);
+    setPodiumError(null);
+    try {
+      setHostPodium(await fetchRatingAggregate('user', 'host', dateParams()));
+    } catch (err) {
+      setPodiumError(err.response?.data?.message || 'Failed to load host ratings');
+    } finally {
+      setPodiumLoading(false);
+    }
+  }, [dateParams]);
+
+  useEffect(() => { fetchHostPodium(); }, [fetchHostPodium]);
+
+  // ── Breakdown ranking table — switches with the User→Host / Host→User tabs ──
+  const [ranking, setRanking]         = useState([]);
   const [aggLoading, setAggLoading]   = useState(false);
   const [aggError, setAggError]       = useState(null);
 
-  const fetchHostRanking = useCallback(async () => {
+  const fetchRanking = useCallback(async () => {
     setAggLoading(true);
     setAggError(null);
     try {
-      const byHost = new Map();
-      let page = 1;
-      let totalPages = 1;
-      do {
-        const { data } = await api.get('/api/admin/ratings', {
-          params: { page, limit: HOST_RATING_PAGE_SIZE, rateeRole: 'host' },
-        });
-        const rows = Array.isArray(data?.data) ? data.data : [];
-        totalPages = data?.pagination?.pages ?? 1;
-        rows.forEach((r) => {
-          const id = r.rateeId?._id ?? r.rateeId;
-          if (!id || !r.score) return;
-          const entry = byHost.get(id) || { host: r.rateeId, total: 0, count: 0 };
-          entry.total += r.score;
-          entry.count += 1;
-          entry.host = r.rateeId;
-          byHost.set(id, entry);
-        });
-        page += 1;
-      } while (page <= totalPages && page <= MAX_HOST_RATING_PAGES);
-
-      const ranked = Array.from(byHost.values())
-        .map((e) => ({ host: e.host, avgRating: e.total / e.count, count: e.count }))
-        .sort((a, b) => b.avgRating - a.avgRating || b.count - a.count);
-
-      setHostRanking(ranked);
+      setRanking(await fetchRatingAggregate(current.raterRole, current.rateeRole, dateParams()));
     } catch (err) {
-      setAggError(err.response?.data?.message || 'Failed to load host ratings');
+      setAggError(err.response?.data?.message || 'Failed to load ratings');
     } finally {
       setAggLoading(false);
     }
-  }, []);
+  }, [current.raterRole, current.rateeRole, dateParams]);
 
-  useEffect(() => { fetchHostRanking(); }, [fetchHostRanking]);
+  useEffect(() => { fetchRanking(); }, [fetchRanking]);
 
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1057,9 +1119,7 @@ const RatingsTab = () => {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
 
-  const [score, setScore]         = useState('');
-  const [raterRole, setRaterRole] = useState('');
-  const [rateeRole, setRateeRole] = useState('');
+  const [score, setScore] = useState('');
 
   const fetchRatings = useCallback(async () => {
     setLoading(true);
@@ -1068,9 +1128,10 @@ const RatingsTab = () => {
       const { data } = await api.get('/api/admin/ratings', {
         params: {
           page, limit: 15,
-          ...(score     && { score }),
-          ...(raterRole && { raterRole }),
-          ...(rateeRole && { rateeRole }),
+          raterRole: current.raterRole,
+          rateeRole: current.rateeRole,
+          ...(score && { score }),
+          ...dateParams(),
         },
       });
       const list       = Array.isArray(data?.data) ? data.data : [];
@@ -1083,11 +1144,13 @@ const RatingsTab = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, score, raterRole, rateeRole]);
+  }, [page, score, current.raterRole, current.rateeRole, dateParams]);
 
   useEffect(() => { fetchRatings(); }, [fetchRatings]);
 
+  const onDirectionChange = (id) => { setDirection(id); setPage(1); };
   const onFilterChange = (setter) => (e) => { setter(e.target.value); setPage(1); };
+  const onPeriodChange = (id) => { setPeriodFilter(id); setPage(1); };
 
   const pageNumbers = () => {
     if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
@@ -1099,35 +1162,86 @@ const RatingsTab = () => {
   return (
     <div className="space-y-4 sm:space-y-6">
 
-      <RatedHostsAside hosts={hostRanking} loading={aggLoading} error={aggError} />
+      {/* Period filter — applies to the podium, both breakdown tabs, and the list */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
+          {RATING_PERIODS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => onPeriodChange(p.id)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                periodFilter === p.id ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:bg-neutral-200/60'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
 
-      {/* Full host ranking */}
+        {periodFilter === 'custom' && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => { setCustomStart(e.target.value); setPage(1); }}
+              className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+            />
+            <span className="text-xs text-neutral-400">to</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => { setCustomEnd(e.target.value); setPage(1); }}
+              className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Animated "Top Rated Hosts" podium — fixed, stays visible under both tabs below */}
+      <RatedHostsAside hosts={hostPodium} loading={podiumLoading} error={podiumError} title="Top Rated Hosts" emptyLabel="No host ratings yet" />
+
+      {/* Breakdown tabs — switch the ranking table + ratings list below */}
+      <div className="flex gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50 p-1.5 sm:inline-flex">
+        {RATING_DIRECTIONS.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            onClick={() => onDirectionChange(id)}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition sm:flex-none ${
+              direction === id ? 'bg-neutral-900 text-white shadow-sm' : 'text-neutral-500 hover:bg-neutral-200/60'
+            }`}
+          >
+            <Icon size={14} /> {label} Ratings
+          </button>
+        ))}
+      </div>
+
+      {/* Full ranking */}
       <div className="rounded-2xl border border-neutral-200 bg-white">
         <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
           <p className="flex items-center gap-1.5 text-sm font-semibold text-neutral-800">
-            <Star size={15} className="text-neutral-400" /> All Hosts by Rating
+            <Star size={15} className="text-neutral-400" /> {current.tableTitle}
           </p>
-          <button onClick={fetchHostRanking}
+          <button onClick={fetchRanking}
             className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800">
             <RefreshCw size={13} className={aggLoading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
 
-        {aggLoading && hostRanking.length === 0 ? (
+        {aggLoading && ranking.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
             <Loader2 size={20} className="animate-spin" /> Crunching ratings…
           </div>
-        ) : hostRanking.length === 0 ? (
+        ) : ranking.length === 0 ? (
           <div className="py-16 text-center">
             <Star size={36} className="mx-auto mb-3 text-neutral-200" />
-            <p className="text-sm font-medium text-neutral-400">No host ratings yet</p>
+            <p className="text-sm font-medium text-neutral-400">{current.rankEmpty}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[600px] text-sm">
               <thead>
                 <tr className="border-b border-neutral-100">
-                  {['Rank', 'Host', 'Average Rating', 'Ratings'].map((h) => (
+                  {['Rank', current.entityLabel, 'Average Rating', 'Ratings'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5">
                       {h}
                     </th>
@@ -1135,7 +1249,7 @@ const RatingsTab = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-50">
-                {hostRanking.map((entry, i) => (
+                {ranking.map((entry, i) => (
                   <tr key={entry.host?._id || i} className="transition-colors hover:bg-neutral-50/70">
                     <td className="px-4 py-3 sm:px-5">
                       <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
@@ -1170,21 +1284,13 @@ const RatingsTab = () => {
             <p className="text-2xl font-black sm:text-3xl">{total}</p>
             <Star size={17} className="opacity-50" />
           </div>
-          <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">Total Ratings</p>
+          <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">{current.label} Ratings</p>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-4 sm:col-span-2">
           <div className="flex h-full flex-wrap items-center gap-2">
             <select value={score} onChange={onFilterChange(setScore)}
               className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400">
               {SCORE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <select value={raterRole} onChange={onFilterChange(setRaterRole)}
-              className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400">
-              {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>Rater: {o.label}</option>)}
-            </select>
-            <select value={rateeRole} onChange={onFilterChange(setRateeRole)}
-              className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400">
-              {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>Ratee: {o.label}</option>)}
             </select>
             <button onClick={fetchRatings}
               className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800">

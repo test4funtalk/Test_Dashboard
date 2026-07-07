@@ -77,7 +77,7 @@ const PodiumColumn = ({ entry, rank, barHeight, revealed }) => {
   );
 };
 
-const RatedHostsAside = ({ hosts: allHosts = [], loading, error }) => {
+const RatedHostsAside = ({ hosts: allHosts = [], loading, error, title = 'Top Rated Hosts', emptyLabel = 'No host ratings yet' }) => {
   const [revealCount, setRevealCount] = useState(0);
   const hosts = allHosts.slice(0, 3);
 
@@ -104,7 +104,7 @@ const RatedHostsAside = ({ hosts: allHosts = [], loading, error }) => {
 
       <div className="relative mb-8 flex items-center justify-center gap-2 sm:mb-12">
         <Star size={20} className="fill-amber-500 text-amber-500" />
-        <p className="text-base font-bold text-neutral-900 sm:text-lg">Top Rated Hosts</p>
+        <p className="text-base font-bold text-neutral-900 sm:text-lg">{title}</p>
       </div>
 
       {error ? (
@@ -116,7 +116,7 @@ const RatedHostsAside = ({ hosts: allHosts = [], loading, error }) => {
           <Loader2 size={20} className="animate-spin" /> Crunching ratings…
         </div>
       ) : hosts.length === 0 ? (
-        <p className="relative py-10 text-center text-sm text-neutral-400">No host ratings yet</p>
+        <p className="relative py-10 text-center text-sm text-neutral-400">{emptyLabel}</p>
       ) : (
         <div className="relative mx-auto flex max-w-2xl items-end justify-center gap-6 border-b-2 border-neutral-100 px-2 pb-0 sm:gap-10 md:gap-14">
           {podium.map((entry, i) => {

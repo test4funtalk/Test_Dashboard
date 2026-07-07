@@ -4,9 +4,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
   Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy,
+  AlertTriangle,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
+import CrashReasonsOverlay from './sections/CrashReasonsOverlay';
+import api from '../../services/api';
 
 import OverviewSection from './sections/OverviewSection';
 import AdminManagementSection from './sections/AdminManagementSection';
@@ -89,6 +92,9 @@ const AdminDashboard = () => {
   // incremented on every nav click — forces section remount even when same tab is clicked
   const [sectionKey, setSectionKey] = useState(0);
 
+  const [showCrashOverlay, setShowCrashOverlay] = useState(false);
+  const [crashCount, setCrashCount] = useState(0);
+
   // auto-close sidebar when viewport grows back to mobile after a resize
   useEffect(() => {
     const onResize = () => {
@@ -98,6 +104,17 @@ const AdminDashboard = () => {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // fetch crash report count for the header badge
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/api/admin/crash-reasons', { params: { page: 1, limit: 1 } })
+      .then(({ data }) => {
+        if (!cancelled) setCrashCount(data?.pagination?.total ?? 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [showCrashOverlay]);
 
   const handleTabChange = (id) => {
     // replace only when re-clicking the active tab (resets section state without polluting history)
@@ -247,6 +264,17 @@ const AdminDashboard = () => {
 
           <div className="flex flex-shrink-0 items-center gap-3">
             <button
+              title="Crash Reports"
+              onClick={() => setShowCrashOverlay(true)}
+              className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+            >
+              <AlertTriangle size={16} />
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold leading-none text-red-600 ring-1 ring-red-200">
+                {crashCount > 99 ? '99+' : crashCount}
+              </span>
+            </button>
+
+            <button
               title="Settings"
               onClick={() => handleTabChange('settings')}
               className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 hover:bg-neutral-50 hover:text-neutral-900"
@@ -274,6 +302,10 @@ const AdminDashboard = () => {
           <ActiveSection key={sectionKey} />
         </main>
       </div>
+
+      {showCrashOverlay && (
+        <CrashReasonsOverlay onClose={() => setShowCrashOverlay(false)} />
+      )}
     </div>
   );
 };
