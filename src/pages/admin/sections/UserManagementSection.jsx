@@ -1794,22 +1794,30 @@ const KYC_STATUS_STYLES = {
   rejected: 'bg-red-100 text-red-700',
 };
 
-const ImageLink = ({ label, url }) => (
-  <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
-    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-neutral-400">{label}</p>
+// ID-1 card size (ISO/IEC 7810) — the standard physical dimensions of both
+// Aadhaar and PAN cards, 85.60mm × 53.98mm — so previews match the real card shape.
+const ID_CARD_ASPECT = '85.6 / 53.98';
+
+const ImageLink = ({ label, url, className = '' }) => (
+  <div className={`min-w-0 flex-1 basis-[160px] ${className}`}>
+    <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-400">{label}</p>
     {url ? (
       <button
         type="button"
         onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-        className="group relative block h-28 w-full overflow-hidden rounded-lg border border-neutral-200"
+        style={{ aspectRatio: ID_CARD_ASPECT }}
+        className="group relative block w-full max-w-[220px] overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100"
       >
-        <img src={url} alt={label} className="h-full w-full object-cover transition group-hover:opacity-80" />
+        <img src={url} alt={label} className="h-full w-full object-contain transition group-hover:opacity-80" />
         <span className="absolute bottom-1 right-1 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
           <ExternalLink size={10} /> View
         </span>
       </button>
     ) : (
-      <div className="flex h-28 w-full items-center justify-center rounded-lg border border-dashed border-neutral-200 text-neutral-300">
+      <div
+        style={{ aspectRatio: ID_CARD_ASPECT }}
+        className="flex w-full max-w-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-200 text-neutral-300"
+      >
         <ImageOff size={20} />
       </div>
     )}
@@ -1896,10 +1904,10 @@ const HostKycDetailsCard = ({ userId }) => {
   if (!kyc) return null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
 
       {/* Status header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3">
         <div className="flex items-center gap-3">
           <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${KYC_STATUS_STYLES[kyc.status] || 'bg-neutral-100 text-neutral-600'}`}>
             {kyc.status || '—'}
@@ -1922,7 +1930,7 @@ const HostKycDetailsCard = ({ userId }) => {
 
       {/* Action panel */}
       {actionMode && (
-        <div className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-5">
+        <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
           <p className="text-sm font-semibold capitalize">{actionMode} this submission</p>
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-500">
@@ -1958,49 +1966,53 @@ const HostKycDetailsCard = ({ userId }) => {
       )}
 
       {kyc.adminNote && (
-        <p className="rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+        <p className="rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-2.5 text-sm text-neutral-600">
           <span className="font-semibold text-neutral-700">Admin note: </span>{kyc.adminNote}
         </p>
       )}
 
-      {/* PAN */}
-      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-          <CreditCard size={12} /> PAN Details
-        </p>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="grid grid-cols-2 gap-3 sm:col-span-2">
-            <div>
-              <p className="text-xs text-neutral-400">Number</p>
-              <p className="font-mono text-sm font-medium">{kyc.pan?.number || '—'}</p>
+      {/* Identity Documents — PAN + Aadhaar side by side, image widths capped to card size */}
+      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="grid gap-4 sm:grid-cols-2 sm:divide-x sm:divide-neutral-100">
+
+          {/* PAN */}
+          <div className="space-y-3 sm:pr-4">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+              <CreditCard size={12} /> PAN Details
+            </p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+              <div>
+                <p className="text-xs text-neutral-400">Number</p>
+                <p className="font-mono text-sm font-medium">{kyc.pan?.number || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-400">Date of Birth</p>
+                <p className="text-sm font-medium">{fmtDate(kyc.pan?.dob)}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-neutral-400">Name as per PAN</p>
+                <p className="text-sm font-medium">{kyc.pan?.nameAsPerPan || '—'}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-neutral-400">Name as per PAN</p>
-              <p className="text-sm font-medium">{kyc.pan?.nameAsPerPan || '—'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-neutral-400">Date of Birth</p>
-              <p className="text-sm font-medium">{fmtDate(kyc.pan?.dob)}</p>
+            <ImageLink label="PAN Image" url={kyc.pan?.imageUrl} />
+          </div>
+
+          {/* Aadhaar */}
+          <div className="space-y-3 sm:pl-4">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+              <IdCard size={12} /> Aadhaar
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <ImageLink label="Front" url={kyc.aadhaar?.frontImageUrl} />
+              <ImageLink label="Back"  url={kyc.aadhaar?.backImageUrl} />
             </div>
           </div>
-          <ImageLink label="PAN Image" url={kyc.pan?.imageUrl} />
-        </div>
-      </div>
-
-      {/* Aadhaar */}
-      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-          <IdCard size={12} /> Aadhaar
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <ImageLink label="Front" url={kyc.aadhaar?.frontImageUrl} />
-          <ImageLink label="Back"  url={kyc.aadhaar?.backImageUrl} />
         </div>
       </div>
 
       {/* Bank */}
-      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
           <Landmark size={12} /> Bank Details
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
