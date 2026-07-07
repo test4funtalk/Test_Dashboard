@@ -103,8 +103,8 @@ const KycActionModal = ({ submission, mode, onClose, onDone }) => {
                 </div>
               </div>
               {submission.pan?.imageUrl && (
-                <a href={submission.pan.imageUrl} target="_blank" rel="noreferrer" className="mt-3 block">
-                  <img src={submission.pan.imageUrl} alt="PAN card" className="h-48 w-full rounded-lg border border-neutral-200 object-cover" />
+                <a href={submission.pan.imageUrl} target="_blank" rel="noreferrer" className="mt-3 block aspect-[1.586/1] w-full max-w-sm overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
+                  <img src={submission.pan.imageUrl} alt="PAN card" className="h-full w-full object-contain" />
                 </a>
               )}
             </div>
@@ -116,14 +116,18 @@ const KycActionModal = ({ submission, mode, onClose, onDone }) => {
               {(submission.aadhaar?.frontImageUrl || submission.aadhaar?.backImageUrl) ? (
                 <div className="grid grid-cols-2 gap-3">
                   {submission.aadhaar?.frontImageUrl && (
-                    <a href={submission.aadhaar.frontImageUrl} target="_blank" rel="noreferrer">
-                      <img src={submission.aadhaar.frontImageUrl} alt="Aadhaar front" className="h-[92px] w-full rounded-lg border border-neutral-200 object-cover sm:h-[114px]" />
+                    <a href={submission.aadhaar.frontImageUrl} target="_blank" rel="noreferrer" className="block">
+                      <div className="aspect-[1.586/1] w-full overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
+                        <img src={submission.aadhaar.frontImageUrl} alt="Aadhaar front" className="h-full w-full object-contain" />
+                      </div>
                       <p className="mt-1 text-center text-[10px] text-neutral-400">Front</p>
                     </a>
                   )}
                   {submission.aadhaar?.backImageUrl && (
-                    <a href={submission.aadhaar.backImageUrl} target="_blank" rel="noreferrer">
-                      <img src={submission.aadhaar.backImageUrl} alt="Aadhaar back" className="h-[92px] w-full rounded-lg border border-neutral-200 object-cover sm:h-[114px]" />
+                    <a href={submission.aadhaar.backImageUrl} target="_blank" rel="noreferrer" className="block">
+                      <div className="aspect-[1.586/1] w-full overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
+                        <img src={submission.aadhaar.backImageUrl} alt="Aadhaar back" className="h-full w-full object-contain" />
+                      </div>
                       <p className="mt-1 text-center text-[10px] text-neutral-400">Back</p>
                     </a>
                   )}

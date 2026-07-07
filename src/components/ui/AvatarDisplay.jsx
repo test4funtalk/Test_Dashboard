@@ -13,7 +13,7 @@ const resolveAvatarSrc = (src) => {
   return `${base}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
 };
 
-const AvatarDisplay = React.memo(({ src, name, size = 'md' }) => {
+const AvatarDisplay = React.memo(({ src, name, size = 'md', isSuperAdmin = false }) => {
   const [imgError, setImgError] = useState(false);
 
   const sz =
@@ -28,8 +28,18 @@ const AvatarDisplay = React.memo(({ src, name, size = 'md' }) => {
     </div>
   );
 
+  const logo = (
+    <img
+      src="/LG!.png"
+      alt={name || 'avatar'}
+      className={`${sz} flex-shrink-0 rounded-full bg-neutral-100 object-contain`}
+    />
+  );
+
+  const fallback = isSuperAdmin ? logo : initials;
+
   const resolvedSrc = resolveAvatarSrc(src);
-  if (!resolvedSrc || imgError) return initials;
+  if (!resolvedSrc || imgError) return fallback;
 
   return (
     <img

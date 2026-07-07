@@ -255,6 +255,86 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
   );
 };
 
+// ─── copyable user id (table rows) ─────────────────────────────────────────────
+
+const CopyableUserId = ({ id }) => {
+  const [copied, setCopied] = useState(false);
+
+  const copy = (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(id).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <button
+      onClick={copy}
+      title="Copy user ID"
+      className="mt-0.5 flex max-w-full items-center gap-1 text-neutral-300 transition hover:text-neutral-600"
+    >
+      <span className="truncate font-mono text-[10px] leading-none">{id}</span>
+      {copied
+        ? <Check size={10} className="flex-shrink-0 text-green-500" />
+        : <Copy size={10} className="flex-shrink-0" />}
+    </button>
+  );
+};
+
+// ─── row wallet balance (coins for users, cash for hosts) ─────────────────────
+
+const RowWalletBalance = ({ userId, isHost }) => {
+  const [wallet, setWallet]   = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    api.get(isHost ? `/api/admin/host-wallet/${userId}` : `/api/wallet/admin/${userId}`)
+      .then(({ data }) => { if (alive) setWallet(data?.data ?? null); })
+      .catch(() => { if (alive) setWallet(null); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [userId, isHost]);
+
+  if (loading) return <span className="text-xs text-neutral-300">…</span>;
+
+  if (isHost) {
+    return (
+      <span className="flex items-center gap-1 text-xs font-semibold text-green-700">
+        <IndianRupee size={11} />{(wallet?.cash ?? 0).toLocaleString()}
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1 text-xs font-semibold text-amber-600">
+      <Coins size={11} />{(wallet?.coins ?? wallet?.balance ?? 0).toLocaleString()}
+    </span>
+  );
+};
+
+// ─── stat card skyline bars (matches OverviewSection stat cards) ──────────────
+
+const STAT_BAR_HEIGHTS = [45, 90, 60, 100, 55, 80, 40, 95, 65, 85, 50, 75, 40, 100, 60, 90];
+const STAT_BAR_COUNT = 32;
+
+const StatSkylineBars = ({ pct }) => {
+  const filledBars = Math.round((pct / 100) * STAT_BAR_COUNT);
+  return (
+    <div className="mt-2.5 flex h-6 items-end gap-[3px] overflow-hidden">
+      {Array.from({ length: STAT_BAR_COUNT }).map((_, i) => (
+        <div
+          key={i}
+          className={`w-[3px] flex-shrink-0 rounded-full ${i < filledBars ? 'bg-neutral-900' : 'bg-neutral-200'}`}
+          style={{ height: `${STAT_BAR_HEIGHTS[i % STAT_BAR_HEIGHTS.length]}%` }}
+        />
+      ))}
+    </div>
+  );
+};
+
 // ─── pagination ───────────────────────────────────────────────────────────────
 
 const PaginationBar = ({ pagination, onPage }) => {
@@ -1543,7 +1623,11 @@ const WithdrawalHistoryCard = ({ hostId }) => {
             <thead>
               <tr className="border-b border-neutral-100">
                 {['Gross', 'Deductions', 'GST', 'Net Amount', 'Status', 'Processed By', 'Date', 'Actions'].map((h) => (
-                  <th key={h} className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5 ${h === 'Actions' ? 'text-right' : 'text-left'}`}>
+                  <th
+                    key={h}
+                    title={h === 'GST' ? "Carved out of the platform fee for tax remittance — not an additional deduction from Net Amount" : undefined}
+                    className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5 ${h === 'Actions' ? 'text-right' : 'text-left'}`}
+                  >
                     {h}
                   </th>
                 ))}
@@ -2342,21 +2426,24 @@ const UserManagementSection = () => {
     onlineHosts:   stats.onlineHosts   || hosts.filter((h) => h.userCurrentStatus === 'online').length,
   };
 
+  const usersTotal = displayStats.totalUsers;
+  const hostsTotal  = displayStats.totalHosts;
+
   const STAT_CARDS = isUsersTab ? [
-    { label: 'Total Users', value: displayStats.totalUsers,   icon: Users,      color: 'bg-neutral-900 text-white' },
-    { label: 'Active',      value: displayStats.activeUsers,  icon: UserCheck,  color: 'bg-green-50 text-green-800 border border-green-200' },
-    { label: 'Verified',    value: displayStats.verifiedUsers,icon: ShieldCheck,color: 'bg-blue-50 text-blue-800 border border-blue-200' },
-    { label: 'Online Now',  value: displayStats.onlineUsers,  icon: Wifi,       color: 'bg-emerald-50 text-emerald-800 border border-emerald-200' },
+    { label: 'Total Users', value: displayStats.totalUsers,    total: usersTotal, icon: Users,      caption: 'All registered users', dot: 'bg-neutral-900' },
+    { label: 'Active',      value: displayStats.activeUsers,   total: usersTotal, icon: UserCheck,  caption: 'Currently active',      dot: 'bg-green-500'   },
+    { label: 'Verified',    value: displayStats.verifiedUsers, total: usersTotal, icon: ShieldCheck,caption: 'KYC verified',          dot: 'bg-blue-500'    },
+    { label: 'Online Now',  value: displayStats.onlineUsers,   total: usersTotal, icon: Wifi,       caption: 'Online right now',      dot: 'bg-emerald-500' },
   ] : [
-    { label: 'Total Hosts', value: displayStats.totalHosts,   icon: Crown,      color: 'bg-amber-50 text-amber-800 border border-amber-200' },
-    { label: 'Active',      value: displayStats.activeHosts,  icon: UserCheck,  color: 'bg-green-50 text-green-800 border border-green-200' },
-    { label: 'Verified',    value: displayStats.verifiedHosts,icon: ShieldCheck,color: 'bg-blue-50 text-blue-800 border border-blue-200' },
-    { label: 'Online Now',  value: displayStats.onlineHosts,  icon: Wifi,       color: 'bg-emerald-50 text-emerald-800 border border-emerald-200' },
+    { label: 'Total Hosts', value: displayStats.totalHosts,    total: hostsTotal, icon: Crown,      caption: 'All registered hosts',  dot: 'bg-amber-500'   },
+    { label: 'Active',      value: displayStats.activeHosts,   total: hostsTotal, icon: UserCheck,  caption: 'Currently active',      dot: 'bg-green-500'   },
+    { label: 'Verified',    value: displayStats.verifiedHosts, total: hostsTotal, icon: ShieldCheck,caption: 'KYC verified',          dot: 'bg-blue-500'    },
+    { label: 'Online Now',  value: displayStats.onlineHosts,   total: hostsTotal, icon: Wifi,       caption: 'Online right now',      dot: 'bg-emerald-500' },
   ];
 
   const COL_HEADERS = isUsersTab
-    ? ['User', 'Phone', 'Gender', 'Status', 'Verified', 'Joined', 'Actions']
-    : ['Host', 'Phone', 'Status', 'Verified', 'Last Seen', 'Actions'];
+    ? ['User', 'Phone', 'Gender', 'Status', 'Verified', 'Joined', 'Coin Wallet', 'Actions']
+    : ['Host', 'Phone', 'Status', 'Verified', 'Last Seen', 'Cash Wallet', 'Actions'];
 
   // ── detail page view ─────────────────────────────────────────────────────
 
@@ -2394,15 +2481,34 @@ const UserManagementSection = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {STAT_CARDS.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-4 ${color}`}>
-            <div className="flex items-start justify-between">
-              <p className="text-2xl font-black sm:text-3xl">{value}</p>
-              <Icon size={17} className="opacity-50" />
+        {STAT_CARDS.map(({ label, value, total, icon: Icon, caption, dot }) => {
+          const pct = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
+          return (
+            <div key={label} className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-black">
+                  <Icon size={15} />
+                </div>
+              </div>
+
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{value.toLocaleString()}</span>
+                <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                  <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${dot}`} />
+                  <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${dot}`} />
+                </span>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between text-xs text-neutral-400">
+                <span className="truncate">{caption}</span>
+                <span className="flex-shrink-0 font-semibold text-neutral-500">{pct}% of total</span>
+              </div>
+
+              <StatSkylineBars pct={pct} />
             </div>
-            <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">{label}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Table card */}
@@ -2513,9 +2619,9 @@ const UserManagementSection = () => {
                       <td className="px-4 py-3 sm:px-6">
                         <div className="flex items-center gap-3">
                           <AvatarDisplay src={u.avatar} name={u.username} size="sm" />
-                          <div>
-                            <p className="text-sm font-medium">{u.username || '—'}</p>
-                            <p className="font-mono text-[10px] text-neutral-300 leading-none mt-0.5">#{u._id?.slice(-8)}</p>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{u.username || '—'}</p>
+                            <CopyableUserId id={u._id} />
                             <OnlineBadge status={u.userCurrentStatus} />
                           </div>
                         </div>
@@ -2542,6 +2648,11 @@ const UserManagementSection = () => {
                       {/* Joined / Last Seen */}
                       <td className="px-4 py-3 text-xs text-neutral-500 sm:px-6">
                         {isUsersTab ? fmtDate(u.createdAt) : fmtDate(u.lastSeen)}
+                      </td>
+
+                      {/* Wallet */}
+                      <td className="px-4 py-3 sm:px-6" onClick={(e) => e.stopPropagation()}>
+                        <RowWalletBalance userId={u._id} isHost={!isUsersTab} />
                       </td>
 
                       {/* Actions */}

@@ -22,9 +22,11 @@ const fmtDateTime = (d) =>
 
 const fmtDeduction = (d) => (d.type === 'percent' ? `${d.value}%` : fmtINR(d.value));
 
-// A deduction rule named like "Platform Fee" or "GST" double-charges the host —
-// those are already deducted via the dedicated platformFeePercent/gstPercent fields.
-const OVERLAP_LABEL_RE = /platform\s*fee|\bgst\b/i;
+// A deduction rule named like "Platform Fee" double-charges the host — it's already
+// deducted via the dedicated platformFeePercent field. GST is excluded here: the dedicated
+// gstPercent field is carved out of the platform fee for tax reporting and never subtracts
+// from netAmount on its own, so an ad-hoc "GST" deduction isn't a duplicate charge.
+const OVERLAP_LABEL_RE = /platform\s*fee/i;
 const isOverlapDeduction = (label) => OVERLAP_LABEL_RE.test(label || '');
 
 const STATUS_STYLES = {
@@ -266,7 +268,7 @@ const CheckoutConfigCard = () => {
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-neutral-600">GST %</label>
+              <label className="mb-1 block text-xs font-semibold text-neutral-600" title="Applied to the Platform Fee, not the gross amount — carved out of the fee for tax remittance, not an extra deduction from the host's payout">GST % (of platform fee)</label>
               <div className="relative">
                 <Percent size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                 <input
@@ -382,7 +384,7 @@ const CheckoutConfigCard = () => {
                             {d.reason && <p className="truncate text-xs text-neutral-400">{d.reason}</p>}
                             {isOverlapDeduction(d.label) && (
                               <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-amber-600">
-                                <AlertTriangle size={11} /> Duplicates the dedicated {OVERLAP_LABEL_RE.exec(d.label)?.[0]?.toLowerCase().includes('gst') ? 'GST %' : 'Platform Fee %'} field above — host is charged this twice. Consider deleting this rule.
+                                <AlertTriangle size={11} /> Duplicates the dedicated Platform Fee % field above — host is charged this twice. Consider deleting this rule.
                               </p>
                             )}
                           </div>
@@ -444,7 +446,7 @@ const CheckoutConfigCard = () => {
             <p className="mt-1.5 text-[11px] text-neutral-400">Leave Host ID blank to apply this deduction to every host. Set it to scope the deduction to one host only — it stacks on top of global deductions.</p>
             {isOverlapDeduction(newLabel) && (
               <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-amber-600">
-                <AlertTriangle size={11} /> This overlaps with the dedicated GST %/Platform Fee % fields above — adding it will charge the host twice.
+                <AlertTriangle size={11} /> This overlaps with the dedicated Platform Fee % field above — adding it will charge the host twice.
               </p>
             )}
             {deductionError && (
@@ -1048,7 +1050,7 @@ const CheckoutActionModal = ({ checkout: initialCheckout, mode, onClose, onDone,
                   <span className="flex min-w-0 items-center gap-1.5 truncate">
                     {d.label} ({fmtDeduction(d)})
                     {isOverlapDeduction(d.label) && (
-                      <span title="Duplicates the dedicated Platform Fee/GST field below — this host is being charged twice" className="flex-shrink-0">
+                      <span title="Duplicates the dedicated Platform Fee field below — this host is being charged twice" className="flex-shrink-0">
                         <AlertTriangle size={11} className="text-amber-500" />
                       </span>
                     )}
@@ -1076,8 +1078,8 @@ const CheckoutActionModal = ({ checkout: initialCheckout, mode, onClose, onDone,
               <div className="flex justify-between text-neutral-500">
                 <span>Platform Fee ({checkout.platformFeePercent ?? 0}%)</span><span>− {fmtINR(checkout.platformFeeAmount)}</span>
               </div>
-              <div className="flex justify-between text-neutral-500">
-                <span>GST ({checkout.gstPercent ?? 0}%)</span><span>− {fmtINR(checkout.gstAmount)}</span>
+              <div className="flex justify-between pl-3 text-[11px] text-neutral-400" title="GST is carved out of the platform fee for tax remittance — not an additional deduction from the host's payout">
+                <span>incl. GST ({checkout.gstPercent ?? 0}%)</span><span>{fmtINR(checkout.gstAmount)}</span>
               </div>
               <div className="flex justify-between border-t border-neutral-100 pt-1.5 text-base font-bold text-emerald-700">
                 <span>Net Amount (to host)</span><span>{fmtINR(checkout.netAmount)}</span>
@@ -1640,7 +1642,11 @@ const CheckoutManagementSection = () => {
               <thead>
                 <tr className="border-b border-neutral-100">
                   {['Host', 'Gross', 'Deductions', 'Platform Fee', 'GST', 'Net Amount', 'Status', 'Processed By', 'Date', 'Actions'].map((h) => (
-                    <th key={h} className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5 ${h === 'Actions' ? 'text-right' : 'text-left'}`}>
+                    <th
+                      key={h}
+                      title={h === 'GST' ? "Carved out of the Platform Fee for tax remittance — already included in that column, not subtracted again in Net Amount" : undefined}
+                      className={`px-4 py-3.5 text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5 ${h === 'Actions' ? 'text-right' : 'text-left'}`}
+                    >
                       {h}
                     </th>
                   ))}

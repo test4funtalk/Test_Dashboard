@@ -120,7 +120,7 @@ const AdminDashboard = () => {
   const ActiveSection = SECTION_MAP[tab];
 
   return (
-    <div className="flex h-screen overflow-hidden bg-neutral-50">
+    <div className="flex h-screen overflow-hidden bg-white">
 
       {/* ── Mobile backdrop ─────────────────────────────────────────────── */}
       {sidebarOpen && (
@@ -149,7 +149,7 @@ const AdminDashboard = () => {
           }`}
         >
           <img
-            src="/favicon.svg"
+            src="/LG!.png"
             alt="Toppyz Dynamics"
             className="h-14 w-14 flex-shrink-0 rounded-full object-contain"
           />
@@ -192,7 +192,7 @@ const AdminDashboard = () => {
           {sidebarOpen ? (
             <>
               <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-neutral-50 px-3 py-2.5">
-                <AvatarDisplay src={adminAvatar} name={adminUsername} size="sm" />
+                <AvatarDisplay src={adminAvatar} name={adminUsername} size="sm" isSuperAdmin={isSuperAdmin} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold leading-none">{adminUsername}</p>
                   <p className="mt-0.5 truncate text-xs text-neutral-400">{adminEmail}</p>
@@ -209,7 +209,7 @@ const AdminDashboard = () => {
           ) : (
             <div className="flex flex-col items-center gap-2">
               <div title={adminUsername}>
-                <AvatarDisplay src={adminAvatar} name={adminUsername} size="sm" />
+                <AvatarDisplay src={adminAvatar} name={adminUsername} size="sm" isSuperAdmin={isSuperAdmin} />
               </div>
               <button
                 onClick={handleLogout}
@@ -243,6 +243,29 @@ const AdminDashboard = () => {
             <p className="mt-0.5 hidden truncate text-sm text-neutral-400 sm:block">
               {PAGE_META[tab]?.sub}
             </p>
+          </div>
+
+          <div className="flex flex-shrink-0 items-center gap-3">
+            <button
+              title="Settings"
+              onClick={() => handleTabChange('settings')}
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 hover:bg-neutral-50 hover:text-neutral-900"
+            >
+              <Settings size={16} />
+            </button>
+
+            <div className="flex items-center gap-2.5">
+              <AvatarDisplay src={adminAvatar} name={adminUsername} size="sm" isSuperAdmin={isSuperAdmin} />
+              <div className="hidden min-w-0 sm:block">
+                <p className="flex items-center gap-1 truncate text-sm font-semibold leading-none text-neutral-900">
+                  {adminUsername}
+                  {isSuperAdmin && <Crown size={12} className="flex-shrink-0 text-amber-500" />}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-neutral-400">
+                  {isSuperAdmin ? 'Owner' : 'Admin'}
+                </p>
+              </div>
+            </div>
           </div>
         </header>
 

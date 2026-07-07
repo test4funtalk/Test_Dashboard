@@ -31,11 +31,6 @@ const Login = () => {
     <main className="flex min-h-screen items-center justify-center bg-white px-4">
       <div className="w-full max-w-md">
         <div className="rounded-3xl border border-neutral-200 bg-white p-8 shadow-sm">
-          <div className="mb-8 text-center">
-            <h1 className="text-4xl font-bold tracking-tight">Welcome Back</h1>
-            <p className="mt-3 text-neutral-500">Sign in to access your dashboard</p>
-          </div>
-
           {error && (
             <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
               {error}

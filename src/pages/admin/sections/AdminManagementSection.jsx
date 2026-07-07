@@ -119,7 +119,7 @@ const AdminManagementSection = () => {
                       <tr key={admin.adminId} className="transition hover:bg-neutral-50">
                         <td className="px-4 py-4 sm:px-6">
                           <div className="flex items-center gap-3">
-                            <AvatarDisplay src={admin.user?.avatar} name={admin.user?.username} size="sm" />
+                            <AvatarDisplay src={admin.user?.avatar} name={admin.user?.username} size="sm" isSuperAdmin={admin.isSuperAdmin} />
                             <div>
                               <p className="text-sm font-medium">{admin.user?.username || '—'}</p>
                               {isMe && <p className="text-xs text-neutral-400">You</p>}

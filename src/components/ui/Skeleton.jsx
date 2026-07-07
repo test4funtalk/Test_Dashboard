@@ -96,7 +96,7 @@ export const StatsSkeleton = () => (
 
 // ─── full dashboard shell skeleton (Suspense fallback) ────────────────────────
 export const DashboardShellSkeleton = () => (
-  <div className="flex h-screen overflow-hidden bg-neutral-50">
+  <div className="flex h-screen overflow-hidden bg-white">
     {/* sidebar */}
     <div className="flex w-60 flex-shrink-0 flex-col border-r border-neutral-200 bg-white p-4">
       <div className="mb-4 flex items-center gap-3 border-b border-neutral-100 pb-4">
