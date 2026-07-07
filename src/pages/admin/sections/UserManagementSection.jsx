@@ -2066,6 +2066,17 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
   const canPromote  = activeTab === 'users' && user.gender === 'female' && user.role === 'user';
   const isPromoting = promotingId === user._id;
   const [copied, setCopied] = useState(false);
+  const [kycStatus, setKycStatus] = useState(null); // null = loading/unknown, 'approved' | 'pending' | 'rejected' | 'none'
+
+  useEffect(() => {
+    if (!isHostDetail) return;
+    let cancelled = false;
+    setKycStatus(null);
+    api.get(`/api/admin/kyc/${user._id}`)
+      .then(({ data }) => { if (!cancelled) setKycStatus(data?.data?.status ?? 'none'); })
+      .catch(() => { if (!cancelled) setKycStatus('none'); });
+    return () => { cancelled = true; };
+  }, [isHostDetail, user._id]);
 
   const copyId = () => {
     navigator.clipboard.writeText(user._id).then(() => {
@@ -2126,13 +2137,20 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
                     <ShieldCheck size={10} /> Verified
                   </span>
                 )}
+                {isHostDetail && (
+                  <span className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    kycStatus === 'approved' ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-500'
+                  }`}>
+                    <IdCard size={10} /> KYC Verified: {kycStatus === null ? '…' : kycStatus === 'approved' ? 'Yes' : 'No'}
+                  </span>
+                )}
                 <OnlineBadge status={user.userCurrentStatus} />
               </div>
             </div>
           </div>
 
           {/* Right: action buttons */}
-          <div className="flex flex-wrap gap-2 sm:flex-col sm:items-end">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={onEdit}
               className="flex items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
