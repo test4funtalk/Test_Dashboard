@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   AlertTriangle, X, Loader2, AlertCircle,
-  ChevronLeft, ChevronRight, RefreshCw, Trash2,
+  ChevronLeft, ChevronRight, RefreshCw, Trash2, Eye, Copy, Check,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -35,6 +35,9 @@ const CrashReasonsOverlay = ({ onClose }) => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError]     = useState(null);
+
+  const [viewTarget, setViewTarget] = useState(null);
+  const [copied, setCopied]         = useState(false);
 
   const fetchReasons = useCallback(async (targetPage = 1) => {
     setLoading(true);
@@ -166,17 +169,32 @@ const CrashReasonsOverlay = ({ onClose }) => {
                       </td>
                       <td className="px-4 py-3 sm:px-6"><RoleBadge role={r.role} /></td>
                       <td className="max-w-xs px-4 py-3 text-neutral-700 sm:px-6">
-                        <p className="line-clamp-2 whitespace-pre-wrap break-words">{r.reason || '—'}</p>
+                        <button
+                          onClick={() => setViewTarget(r)}
+                          className="block w-full text-left"
+                          title="View full reason"
+                        >
+                          <p className="line-clamp-2 whitespace-pre-wrap break-words transition hover:text-neutral-950 hover:underline">{r.reason || '—'}</p>
+                        </button>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-neutral-400 sm:px-6">{fmtDateTime(r.createdAt)}</td>
                       <td className="px-4 py-3 text-right sm:px-6">
-                        <button
-                          onClick={() => setDeleteTarget(r)}
-                          title="Delete"
-                          className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setViewTarget(r)}
+                            title="View details"
+                            className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 transition hover:border-neutral-400 hover:bg-neutral-50 hover:text-neutral-700"
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(r)}
+                            title="Delete"
+                            className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -209,6 +227,74 @@ const CrashReasonsOverlay = ({ onClose }) => {
           </div>
         )}
       </div>
+
+      {/* Crash report detail modal */}
+      {viewTarget && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-t-3xl border border-neutral-200 bg-white shadow-2xl sm:max-w-3xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-red-100">
+                  <AlertTriangle size={18} className="text-red-600" />
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <AvatarDisplay name={viewTarget.username} size="sm" />
+                  <div>
+                    <p className="text-sm font-bold leading-none">{viewTarget.username || '—'}</p>
+                    <div className="mt-1.5"><RoleBadge role={viewTarget.role} /></div>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => { setViewTarget(null); setCopied(false); }}
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full hover:bg-neutral-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason</p>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(viewTarget.reason || '');
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    } catch { /* clipboard unavailable */ }
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-500 transition hover:border-neutral-400 hover:bg-neutral-50"
+                >
+                  {copied ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <div className="min-h-[40vh] rounded-2xl border border-neutral-200 bg-neutral-50 p-5">
+                <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-neutral-800">
+                  {viewTarget.reason || '—'}
+                </p>
+              </div>
+              <p className="mt-4 text-xs text-neutral-400">Reported {fmtDateTime(viewTarget.createdAt)}</p>
+            </div>
+
+            <div className="flex gap-3 border-t border-neutral-100 px-5 py-4 sm:px-6">
+              <button
+                onClick={() => { setViewTarget(null); setCopied(false); }}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => { setDeleteTarget(viewTarget); setViewTarget(null); setCopied(false); }}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50"
+              >
+                <Trash2 size={14} /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirm modal */}
       {deleteTarget && (

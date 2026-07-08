@@ -4,11 +4,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
   Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy,
-  AlertTriangle,
+  AlertTriangle, Smartphone,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
 import CrashReasonsOverlay from './sections/CrashReasonsOverlay';
+import AppVersionOverlay from './sections/AppVersionOverlay';
 import api from '../../services/api';
 
 import OverviewSection from './sections/OverviewSection';
@@ -94,6 +95,7 @@ const AdminDashboard = () => {
 
   const [showCrashOverlay, setShowCrashOverlay] = useState(false);
   const [crashCount, setCrashCount] = useState(0);
+  const [showAppVersionOverlay, setShowAppVersionOverlay] = useState(false);
 
   // auto-close sidebar when viewport grows back to mobile after a resize
   useEffect(() => {
@@ -264,6 +266,14 @@ const AdminDashboard = () => {
 
           <div className="flex flex-shrink-0 items-center gap-3">
             <button
+              title="App Version"
+              onClick={() => setShowAppVersionOverlay(true)}
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 hover:bg-neutral-50 hover:text-neutral-900"
+            >
+              <Smartphone size={16} />
+            </button>
+
+            <button
               title="Crash Reports"
               onClick={() => setShowCrashOverlay(true)}
               className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
@@ -305,6 +315,10 @@ const AdminDashboard = () => {
 
       {showCrashOverlay && (
         <CrashReasonsOverlay onClose={() => setShowCrashOverlay(false)} />
+      )}
+
+      {showAppVersionOverlay && (
+        <AppVersionOverlay onClose={() => setShowAppVersionOverlay(false)} />
       )}
     </div>
   );
