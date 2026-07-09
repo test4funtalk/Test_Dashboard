@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import {
   PhoneCall, Phone, Video, Search, RefreshCw, AlertCircle,
   Loader2, ChevronLeft, ChevronRight, Coins, Gift,
-  Settings, Plus, Pencil, Trash2, X, CheckCircle, Save,
+  Settings, Plus, Pencil, Trash2, X, CheckCircle, Save, Wallet,
+  TrendingUp, TrendingDown,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -13,6 +14,8 @@ import CallDetailModal from './CallDetailModal';
 
 const fmtDateTime = (d) =>
   d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+const fmtNum = (n) => (n == null ? '—' : n.toLocaleString());
 
 const fmtDuration = (secs) => {
   if (secs == null || secs < 0) return '—';
@@ -65,6 +68,44 @@ const SECTION_TABS = [
   { id: 'config', label: 'Call Config', Icon: Settings  },
   { id: 'gifts',  label: 'Gift Config', Icon: Gift      },
 ];
+
+// deterministic bar-height pattern for the barcode-style mini chart on KPI cards
+// (matches OverviewSection's stat cards for visual consistency across admin sections)
+const BAR_HEIGHTS = [45, 90, 60, 100, 55, 80, 40, 95, 65, 85, 50, 75, 40, 100, 60, 90];
+const BAR_COUNT = 32;
+
+const KpiCard = ({ label, value, pct, Icon, trend }) => {
+  const filledBars = Math.round((pct / 100) * BAR_COUNT);
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-black">
+          <Icon size={15} />
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{value}</span>
+        {trend && (
+          trend === 'up'
+            ? <span className="flex items-center gap-0.5 text-xs font-medium text-green-600"><TrendingUp size={20} /></span>
+            : <span className="flex items-center gap-0.5 text-xs font-medium text-red-500"><TrendingDown size={20} /></span>
+        )}
+      </div>
+
+      <div className="mt-3 flex h-6 items-end gap-[3px] overflow-hidden">
+        {Array.from({ length: BAR_COUNT }).map((_, i) => (
+          <div
+            key={i}
+            className={`w-[3px] flex-shrink-0 rounded-full ${i < filledBars ? 'bg-neutral-900' : 'bg-neutral-200'}`}
+            style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
 
 // ─── calls tab ────────────────────────────────────────────────────────────────
 
@@ -142,20 +183,20 @@ const CallsTab = () => {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
-        <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-4">
-          <div className="flex items-start justify-between">
-            <p className="text-2xl font-black sm:text-3xl">{total}</p>
-            <PhoneCall size={17} className="opacity-50" />
-          </div>
-          <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">Total Calls</p>
-        </div>
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-4">
-          <div className="flex items-start justify-between">
-            <p className="text-2xl font-black sm:text-3xl">{calls.length}</p>
-            <Search size={17} className="opacity-30" />
-          </div>
-          <p className="mt-0.5 text-xs font-medium text-neutral-500 sm:mt-1">Showing</p>
-        </div>
+        <KpiCard
+          label="Total Calls"
+          value={fmtNum(total)}
+          pct={100}
+          Icon={PhoneCall}
+          trend="up"
+        />
+        <KpiCard
+          label="Showing"
+          value={fmtNum(calls.length)}
+          pct={total > 0 ? Math.round((calls.length / total) * 100) : 0}
+          Icon={Search}
+          trend="up"
+        />
       </div>
 
       {/* Main card */}
@@ -255,7 +296,7 @@ const CallsTab = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] border-collapse text-sm">
+            <table className="w-full min-w-[1320px] border-collapse text-sm">
               <thead>
                 <tr className="bg-neutral-50">
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
@@ -268,6 +309,8 @@ const CallsTab = () => {
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-24">Gift Cash</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">User Wallet</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host Wallet</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
                 </tr>
               </thead>
@@ -337,6 +380,28 @@ const CallsTab = () => {
                         {call.gifts?.totalGiftCash
                           ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.gifts.totalGiftCash}</span>
                           : <span className="text-xs text-neutral-300">—</span>
+                        }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {call.walletSnapshot?.callerCoinsAtStart == null && call.walletSnapshot?.callerCoinsAtEnd == null
+                          ? <span className="text-xs text-neutral-300">—</span>
+                          : (
+                            <span className="flex items-center gap-1 text-xs font-medium text-amber-700">
+                              <Coins size={11} className="flex-shrink-0 text-amber-500" />
+                              {fmtNum(call.walletSnapshot?.callerCoinsAtStart)} → {fmtNum(call.walletSnapshot?.callerCoinsAtEnd)}
+                            </span>
+                          )
+                        }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {call.walletSnapshot?.hostCashAtStart == null && call.walletSnapshot?.hostCashAtEnd == null
+                          ? <span className="text-xs text-neutral-300">—</span>
+                          : (
+                            <span className="flex items-center gap-1 text-xs font-medium text-green-700">
+                              <Wallet size={11} className="flex-shrink-0 text-green-500" />
+                              ₹{fmtNum(call.walletSnapshot?.hostCashAtStart)} → ₹{fmtNum(call.walletSnapshot?.hostCashAtEnd)}
+                            </span>
+                          )
                         }
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
@@ -915,27 +980,27 @@ const GiftConfigTab = () => {
 
       {/* Stat cards */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-4">
-          <div className="flex items-start justify-between">
-            <p className="text-2xl font-black sm:text-3xl">{total}</p>
-            <Gift size={17} className="opacity-50" />
-          </div>
-          <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">Total Gifts</p>
-        </div>
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-4">
-          <div className="flex items-start justify-between">
-            <p className="text-2xl font-black text-green-700 sm:text-3xl">{activeCount}</p>
-            <CheckCircle size={17} className="text-green-400 opacity-60" />
-          </div>
-          <p className="mt-0.5 text-xs font-medium text-neutral-500 sm:mt-1">Active</p>
-        </div>
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-4">
-          <div className="flex items-start justify-between">
-            <p className="text-2xl font-black text-neutral-400 sm:text-3xl">{inactiveCount}</p>
-            <X size={17} className="text-neutral-300" />
-          </div>
-          <p className="mt-0.5 text-xs font-medium text-neutral-500 sm:mt-1">Inactive</p>
-        </div>
+        <KpiCard
+          label="Total Gifts"
+          value={fmtNum(total)}
+          pct={100}
+          Icon={Gift}
+          trend="up"
+        />
+        <KpiCard
+          label="Active"
+          value={fmtNum(activeCount)}
+          pct={total > 0 ? Math.round((activeCount / total) * 100) : 0}
+          Icon={CheckCircle}
+          trend="up"
+        />
+        <KpiCard
+          label="Inactive"
+          value={fmtNum(inactiveCount)}
+          pct={total > 0 ? Math.round((inactiveCount / total) * 100) : 0}
+          Icon={X}
+          trend="down"
+        />
       </div>
 
       {/* Main card */}

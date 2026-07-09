@@ -421,8 +421,20 @@ const CallHistoryCard = ({ userId, role }) => {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo,   setCustomTo]   = useState('');
   const [activeCallId, setActiveCallId] = useState(null);
+  const [wallet, setWallet] = useState(null);
+  const [walletLoading, setWalletLoading] = useState(true);
 
   const isHost = role === 'host';
+
+  useEffect(() => {
+    let alive = true;
+    setWalletLoading(true);
+    api.get(isHost ? `/api/admin/host-wallet/${userId}` : `/api/wallet/admin/${userId}`)
+      .then(({ data }) => { if (alive) setWallet(data?.data ?? data ?? null); })
+      .catch(() => { if (alive) setWallet(null); })
+      .finally(() => { if (alive) setWalletLoading(false); });
+    return () => { alive = false; };
+  }, [userId, isHost]);
 
   const fetchHistory = useCallback(async (targetPage) => {
     setLoading(true);
@@ -539,6 +551,59 @@ const CallHistoryCard = ({ userId, role }) => {
         )}
       </div>
 
+      {/* ── Wallet snapshot strip ── */}
+      <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+        {walletLoading ? (
+          <div className="flex items-center gap-2 text-xs text-neutral-400">
+            <Loader2 size={13} className="animate-spin" /> Loading wallet…
+          </div>
+        ) : isHost ? (
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl bg-neutral-900 p-3 text-white">
+              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium opacity-60">
+                <Wallet size={11} /> Cash Balance
+              </div>
+              <p className="text-lg font-black">{fmtINR(wallet?.cash)}</p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
+                <TrendingUp size={11} /> Total Earned
+              </div>
+              <p className="text-lg font-black text-neutral-800">{fmtINR(wallet?.totalEarned)}</p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
+                <Gift size={11} /> Gift Cash
+              </div>
+              <p className="text-lg font-black text-neutral-800">{fmtINR(wallet?.totalGiftCash)}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-neutral-900 p-3 text-white">
+              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium opacity-60">
+                <Wallet size={11} /> Coin Balance
+              </div>
+              <p className="text-lg font-black">{(wallet?.coins ?? wallet?.balance ?? 0).toLocaleString()}</p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
+                <TrendingUp size={11} /> Total Purchased
+              </div>
+              <p className="text-lg font-black text-neutral-800">{(wallet?.totalPurchased ?? 0).toLocaleString()}</p>
+            </div>
+            {wallet?.totalSpent != null && (
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
+                  <Coins size={11} /> Total Spent
+                </div>
+                <p className="text-lg font-black text-neutral-800">{(wallet.totalSpent ?? 0).toLocaleString()}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ── Body — table styled exactly like Call Management → Calls tab ── */}
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
@@ -560,7 +625,7 @@ const CallHistoryCard = ({ userId, role }) => {
            HOST TABLE  –  /calls/earnings response shape
            ════════════════════════════════════════════ */
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] border-collapse text-sm">
+          <table className="w-full min-w-[940px] border-collapse text-sm">
             <thead>
               <tr className="bg-neutral-50">
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
@@ -569,6 +634,7 @@ const CallHistoryCard = ({ userId, role }) => {
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host Cash</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
               </tr>
@@ -577,6 +643,8 @@ const CallHistoryCard = ({ userId, role }) => {
               {calls.map((call, index) => {
                 const TypeIcon  = call.callType === 'video' ? Video : Phone;
                 const giftCount = call.gifts?.length ?? 0;
+                const cashAtStart = call.wallet?.cashAtStart;
+                const cashAtEnd   = call.wallet?.cashAtEnd;
                 return (
                   <tr
                     key={call._id ?? index}
@@ -616,6 +684,14 @@ const CallHistoryCard = ({ userId, role }) => {
                       }
                     </td>
                     <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {cashAtStart != null && cashAtEnd != null
+                        ? <span className="flex items-center gap-1 text-xs font-medium text-neutral-600">
+                            <span className="font-bold">₹</span>{cashAtStart} → <span className="font-bold">₹</span>{cashAtEnd}
+                          </span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
                       {giftCount > 0
                         ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{giftCount}</span>
                         : <span className="text-xs text-neutral-300">—</span>
@@ -635,7 +711,7 @@ const CallHistoryCard = ({ userId, role }) => {
            USER TABLE  –  /calls response shape
            ═══════════════════════════════════════ */
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] border-collapse text-sm">
+          <table className="w-full min-w-[1080px] border-collapse text-sm">
             <thead>
               <tr className="bg-neutral-50">
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
@@ -645,6 +721,7 @@ const CallHistoryCard = ({ userId, role }) => {
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller Coins</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
@@ -653,6 +730,8 @@ const CallHistoryCard = ({ userId, role }) => {
             <tbody>
               {calls.map((call, index) => {
                 const TypeIcon = call.callType === 'video' ? Video : Phone;
+                const coinsAtStart = call.walletSnapshot?.callerCoinsAtStart;
+                const coinsAtEnd   = call.walletSnapshot?.callerCoinsAtEnd;
                 return (
                   <tr
                     key={call._id ?? index}
@@ -697,6 +776,14 @@ const CallHistoryCard = ({ userId, role }) => {
                     <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
                       {call.billing?.totalCoinsDeducted
                         ? <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{call.billing.totalCoinsDeducted}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {coinsAtStart != null && coinsAtEnd != null
+                        ? <span className="flex items-center gap-1 text-xs font-medium text-neutral-600">
+                            {coinsAtStart.toLocaleString()} → {coinsAtEnd.toLocaleString()}
+                          </span>
                         : <span className="text-xs text-neutral-300">—</span>
                       }
                     </td>
@@ -2061,6 +2148,30 @@ const HOST_DETAIL_TABS = [
 const USER_DTAB_IDS = new Set(USER_DETAIL_TABS.map((t) => t.id));
 const HOST_DTAB_IDS = new Set(HOST_DETAIL_TABS.map((t) => t.id));
 
+// ─── header wallet badges (coin balance + total purchased, shown near username) ──
+const HeaderWalletBadges = ({ userId }) => {
+  const [wallet, setWallet] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.get(`/api/wallet/admin/${userId}`)
+      .then(({ data }) => { if (alive) setWallet(data?.data ?? data ?? null); })
+      .catch(() => { if (alive) setWallet(null); });
+    return () => { alive = false; };
+  }, [userId]);
+
+  return (
+    <>
+      <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+        <Coins size={10} /> {(wallet?.coins ?? wallet?.balance ?? 0).toLocaleString()} coins
+      </span>
+      <span className="flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">
+        <TrendingUp size={10} /> {(wallet?.totalPurchased ?? 0).toLocaleString()} purchased
+      </span>
+    </>
+  );
+};
+
 const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelete, onPromote, promotingId }) => {
   const isHostDetail = activeTab === 'hosts';
   const canPromote  = activeTab === 'users' && user.gender === 'female' && user.role === 'user';
@@ -2132,6 +2243,7 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <RoleBadge role={user.role} />
                 <StatusBadge status={user.status} />
+                {!isHostDetail && <HeaderWalletBadges userId={user._id} />}
                 {user.isVerified && (
                   <span className="flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                     <ShieldCheck size={10} /> Verified
@@ -2223,6 +2335,8 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
         </div>
       </div>
 
+      {!isHostDetail && <WalletCard userId={user._id} />}
+
       {/* ── Detail tabs ──────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
         {/* Tab bar */}
@@ -2260,7 +2374,6 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
         ) : (
           dtab === 'payments' ? (
             <div className="space-y-4 p-4 sm:p-5">
-              <WalletCard userId={user._id} />
               <PaymentHistoryCard userId={user._id} />
             </div>
           ) : (

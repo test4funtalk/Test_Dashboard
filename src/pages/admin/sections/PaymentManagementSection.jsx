@@ -430,7 +430,7 @@ const PaymentManagementSection = () => {
             <thead>
               <tr className="border-b border-neutral-100">
                 {[
-                  { label: 'User ID',     cls: '' },
+                  { label: 'User',        cls: '' },
                   { label: 'Package',     cls: '' },
                   { label: 'Coins',       cls: '' },
                   { label: 'Amount',      cls: '' },
@@ -471,14 +471,19 @@ const PaymentManagementSection = () => {
                   const pkg      = p.packageId ?? {};
                   const orderId  = p.cashfree?.orderId ?? '—';
                   const paymentId = p.cashfree?.paymentId ?? null;
+                  const user      = typeof p.userId === 'object' && p.userId !== null ? p.userId : null;
+                  const userIdStr = user?._id ?? p.userId;
 
                   return (
                     <tr key={p._id} className="group hover:bg-neutral-50/70 transition-colors">
 
-                      {/* User ID */}
+                      {/* User */}
                       <td className="px-4 py-3 sm:px-5">
                         <div className="space-y-0.5">
-                          <CopyChip value={p.userId} display={`#${String(p.userId).slice(-10)}`} />
+                          <p className="text-sm font-medium text-neutral-800">
+                            {user?.username || user?.phone || '—'}
+                          </p>
+                          <CopyChip value={userIdStr} display={`#${String(userIdStr).slice(-10)}`} />
                           <p className="text-[10px] text-neutral-300 font-mono">{p._id.slice(-8)}</p>
                         </div>
                       </td>

@@ -115,6 +115,9 @@ const OverviewSection = () => {
   const [platformStats, setPlatformStats] = useState(null);
   const [statsLoading,  setStatsLoading]  = useState(false);
 
+  const [allTimeRevenue,        setAllTimeRevenue]        = useState(0);
+  const [allTimeRevenueLoading, setAllTimeRevenueLoading] = useState(false);
+
   const [topPackages,  setTopPackages]  = useState([]);
   const [pkgLoading,   setPkgLoading]   = useState(false);
   const [pkgInView,    setPkgInView]    = useState(false);
@@ -201,6 +204,25 @@ const OverviewSection = () => {
     }
   }, []);
 
+  // ── All-time purchase revenue (added to Total Balance alongside /api/admin/stats) ──
+  const fetchAllTimeRevenue = useCallback(async () => {
+    setAllTimeRevenueLoading(true);
+    try {
+      let page = 1, pages = 1, sum = 0;
+      while (page <= MAX_PAGES && page <= pages) {
+        const { data } = await api.get('/api/purchase/admin/all', { params: { page, limit: PAGE_SIZE, status: 'success' } });
+        const rows = Array.isArray(data?.data) ? data.data : [];
+        pages = data?.pagination?.pages ?? 1;
+        sum += rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        if (rows.length === 0) break;
+        page++;
+      }
+      setAllTimeRevenue(sum);
+    } catch { /* silent */ } finally {
+      setAllTimeRevenueLoading(false);
+    }
+  }, []);
+
   // ── Top-selling packages ────────────────────────────────────────────────────
   const fetchTopPackages = useCallback(async () => {
     if (filterType === 'selectMonth' && !selectedMonth) return;
@@ -240,6 +262,7 @@ const OverviewSection = () => {
     fetchTopPackages();
   }, [fetchChart, fetchTopPackages, filterType, selectedMonth, customFrom, customTo]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
+  useEffect(() => { fetchAllTimeRevenue(); }, [fetchAllTimeRevenue]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const calls      = platformStats?.calls   ?? {};
@@ -320,12 +343,12 @@ const OverviewSection = () => {
           )}
 
           <button
-            onClick={() => { fetchChart(); fetchTopPackages(); fetchStats(); }}
-            disabled={chartLoading || pkgLoading || statsLoading}
+            onClick={() => { fetchChart(); fetchTopPackages(); fetchStats(); fetchAllTimeRevenue(); }}
+            disabled={chartLoading || pkgLoading || statsLoading || allTimeRevenueLoading}
             title="Refresh overview"
             className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-neutral-100 disabled:opacity-40"
           >
-            <RefreshCw size={13} className={(chartLoading || pkgLoading || statsLoading) ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={(chartLoading || pkgLoading || statsLoading || allTimeRevenueLoading) ? 'animate-spin' : ''} />
             Refresh
           </button>
         </div>
@@ -335,17 +358,18 @@ const OverviewSection = () => {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 
         {(() => {
-          const rawBalance  = billing.totalCashEarned ?? 0;
+          const rawBalance  = (billing.totalCashEarned ?? 0) + allTimeRevenue;
           const rawIncoming = totals.revenue ?? 0;
           const rawOutgoing = totals.expense ?? 0;
           const rawNet      = totals.income ?? 0;
           const maxAbs = Math.max(Math.abs(rawBalance), Math.abs(rawIncoming), Math.abs(rawOutgoing), Math.abs(rawNet), 1);
 
+          const balanceStillLoading = (statsLoading && !platformStats) || (allTimeRevenueLoading && allTimeRevenue === 0);
           const cards = [
             {
               label: 'Total Balance',
               raw: rawBalance,
-              value: statsLoading && !platformStats ? '—' : fmtINR(rawBalance),
+              value: balanceStillLoading ? '—' : fmtINR(rawBalance),
               caption: 'All-time revenue',
               Icon: IndianRupee,
               iconColor: 'text-black',
