@@ -8,7 +8,7 @@ export const fetchUsers = createAsyncThunk(
   async (params, { rejectWithValue }) => {
     try {
       const { data } = await userService.getUsers(params);
-      return data.data;
+      return { ...data.data, role: params?.role };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch users');
     }
@@ -117,8 +117,16 @@ const userSlice = createSlice({
       .addCase(fetchUsers.fulfilled, (state, action) => {
         state.loading = false;
         const all = action.payload?.users ?? [];
-        state.users = all.filter((u) => u.role === 'user');
-        state.hosts = all.filter((u) => u.role === 'host');
+        const { role } = action.payload;
+        if (role === 'host') {
+          state.hosts = all;
+        } else if (role === 'user') {
+          state.users = all;
+        } else {
+          // no role filter was sent — fall back to splitting the mixed page
+          state.users = all.filter((u) => u.role === 'user');
+          state.hosts = all.filter((u) => u.role === 'host');
+        }
         state.pagination = action.payload?.pagination ?? state.pagination;
         if (action.payload?.stats) state.stats = action.payload.stats;
       })

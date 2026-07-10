@@ -2482,11 +2482,15 @@ const UserManagementSection = () => {
     return () => clearTimeout(t);
   }, [search]);
 
-  // ── fetch on filter change (single endpoint, split into users/hosts in the slice) ──
+  // ── fetch on filter change (role-scoped so each tab gets its own page) ──
   const doFetch = useCallback(() => {
-    const params = { page, limit: 20, sort, ...(debouncedSearch && { search: debouncedSearch }) };
+    const params = {
+      page, limit: 20, sort,
+      role: activeTab === 'hosts' ? 'host' : 'user',
+      ...(debouncedSearch && { search: debouncedSearch }),
+    };
     dispatch(fetchUsers(params));
-  }, [dispatch, page, sort, debouncedSearch]);
+  }, [dispatch, page, sort, debouncedSearch, activeTab]);
 
   useEffect(() => { doFetch(); }, [doFetch]);
 
