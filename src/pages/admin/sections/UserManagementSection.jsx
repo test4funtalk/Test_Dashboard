@@ -6,9 +6,10 @@ import {
   ChevronLeft, ChevronRight, Users, UserCheck, ShieldCheck,
   Wifi, AlertCircle, Loader2, CheckCircle, Phone, Calendar,
   Lock, Globe, Clock, UserCircle, Shield, Video, Coins, Gift,
-  PhoneCall, Wallet, TrendingUp, Minus, Plus,
+  PhoneCall, Wallet, TrendingUp, TrendingDown, Minus, Plus,
   Copy, Check, Receipt, Package, IndianRupee,
   IdCard, Banknote, Landmark, ExternalLink, ImageOff, Ban, CreditCard,
+  PhoneOff, PhoneMissed,
 } from 'lucide-react';
 import {
   fetchUsers, updateUser, deleteUser,
@@ -47,6 +48,8 @@ const fmtINR = (amount) => {
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(Number(amount));
 };
+
+const fmtNum = (n) => (n == null ? '—' : n.toLocaleString());
 
 // Only the first character is capitalized — every other character, including
 // later words, is forced lowercase. Matches the rule used in Profile Management's
@@ -408,6 +411,29 @@ const getDateRange = (period) => {
 
 // ─── call history (used in the user/host detail page) ────────────────────────
 
+// matches Call Management → Calls tab's KpiCard, reusing StatSkylineBars for the mini chart
+const KpiCard = ({ label, value, pct, Icon, trend, iconClass = 'bg-neutral-100 text-black' }) => (
+  <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+    <div className="flex items-center justify-between gap-2">
+      <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
+      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${iconClass}`}>
+        <Icon size={15} />
+      </div>
+    </div>
+
+    <div className="mt-2 flex items-baseline gap-2">
+      <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{value}</span>
+      {trend && (
+        trend === 'up'
+          ? <span className="flex items-center gap-0.5 text-xs font-medium text-green-600"><TrendingUp size={20} /></span>
+          : <span className="flex items-center gap-0.5 text-xs font-medium text-red-500"><TrendingDown size={20} /></span>
+      )}
+    </div>
+
+    <StatSkylineBars pct={pct} />
+  </div>
+);
+
 const CallHistoryCard = ({ userId, role }) => {
   const [calls, setCalls]     = useState([]);
   const [loading, setLoading] = useState(false);
@@ -423,6 +449,7 @@ const CallHistoryCard = ({ userId, role }) => {
   const [activeCallId, setActiveCallId] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [walletLoading, setWalletLoading] = useState(true);
+  const [statusCounts, setStatusCounts] = useState(null);
 
   const isHost = role === 'host';
 
@@ -459,6 +486,7 @@ const CallHistoryCard = ({ userId, role }) => {
       setCalls(list);
       setPages(pagination.pages ?? 1);
       setTotal(pagination.total ?? list.length);
+      if (data?.statusCounts) setStatusCounts(data.statusCounts);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load call history');
     } finally {
@@ -478,7 +506,46 @@ const CallHistoryCard = ({ userId, role }) => {
   };
 
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white sm:col-span-2">
+    <>
+      {/* ── Call status stat cards (host only, styled like Call Management → Calls tab) ── */}
+      {isHost && (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {loading && !statusCounts ? (
+            <div className="col-span-full flex items-center gap-2 text-xs text-neutral-400">
+              <Loader2 size={13} className="animate-spin" /> Loading call stats…
+            </div>
+          ) : (
+            <>
+              <KpiCard
+                label="Ended Calls"
+                value={fmtNum(statusCounts?.ended)}
+                pct={total > 0 ? Math.round(((statusCounts?.ended ?? 0) / total) * 100) : 0}
+                Icon={PhoneOff}
+                trend="up"
+                iconClass={CALL_STATUS_STYLES.ended}
+              />
+              <KpiCard
+                label="Missed Calls"
+                value={fmtNum(statusCounts?.missed)}
+                pct={total > 0 ? Math.round(((statusCounts?.missed ?? 0) / total) * 100) : 0}
+                Icon={PhoneMissed}
+                trend="down"
+                iconClass={CALL_STATUS_STYLES.missed}
+              />
+              <KpiCard
+                label="Rejected Calls"
+                value={fmtNum(statusCounts?.rejected)}
+                pct={total > 0 ? Math.round(((statusCounts?.rejected ?? 0) / total) * 100) : 0}
+                Icon={Ban}
+                trend="down"
+                iconClass={CALL_STATUS_STYLES.rejected}
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-neutral-200 bg-white sm:col-span-2">
 
       {/* ── Header + filters (styled like Call Management → Calls tab) ── */}
       <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
@@ -551,58 +618,39 @@ const CallHistoryCard = ({ userId, role }) => {
         )}
       </div>
 
-      {/* ── Wallet snapshot strip ── */}
-      <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
-        {walletLoading ? (
-          <div className="flex items-center gap-2 text-xs text-neutral-400">
-            <Loader2 size={13} className="animate-spin" /> Loading wallet…
-          </div>
-        ) : isHost ? (
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-xl bg-neutral-900 p-3 text-white">
-              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium opacity-60">
-                <Wallet size={11} /> Cash Balance
-              </div>
-              <p className="text-lg font-black">{fmtINR(wallet?.cash)}</p>
+      {/* ── Wallet snapshot strip (non-host only — host stats moved to KPI cards above) ── */}
+      {!isHost && (
+        <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+          {walletLoading ? (
+            <div className="flex items-center gap-2 text-xs text-neutral-400">
+              <Loader2 size={13} className="animate-spin" /> Loading wallet…
             </div>
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
-                <TrendingUp size={11} /> Total Earned
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-neutral-900 p-3 text-white">
+                <div className="mb-1 flex items-center gap-1.5 text-xs font-medium opacity-60">
+                  <Wallet size={11} /> Coin Balance
+                </div>
+                <p className="text-lg font-black">{(wallet?.coins ?? wallet?.balance ?? 0).toLocaleString()}</p>
               </div>
-              <p className="text-lg font-black text-neutral-800">{fmtINR(wallet?.totalEarned)}</p>
-            </div>
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
-                <Gift size={11} /> Gift Cash
-              </div>
-              <p className="text-lg font-black text-neutral-800">{fmtINR(wallet?.totalGiftCash)}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-neutral-900 p-3 text-white">
-              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium opacity-60">
-                <Wallet size={11} /> Coin Balance
-              </div>
-              <p className="text-lg font-black">{(wallet?.coins ?? wallet?.balance ?? 0).toLocaleString()}</p>
-            </div>
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
-                <TrendingUp size={11} /> Total Purchased
-              </div>
-              <p className="text-lg font-black text-neutral-800">{(wallet?.totalPurchased ?? 0).toLocaleString()}</p>
-            </div>
-            {wallet?.totalSpent != null && (
               <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
-                  <Coins size={11} /> Total Spent
+                  <TrendingUp size={11} /> Total Purchased
                 </div>
-                <p className="text-lg font-black text-neutral-800">{(wallet.totalSpent ?? 0).toLocaleString()}</p>
+                <p className="text-lg font-black text-neutral-800">{(wallet?.totalPurchased ?? 0).toLocaleString()}</p>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+              {wallet?.totalSpent != null && (
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-400">
+                    <Coins size={11} /> Total Spent
+                  </div>
+                  <p className="text-lg font-black text-neutral-800">{(wallet.totalSpent ?? 0).toLocaleString()}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Body — table styled exactly like Call Management → Calls tab ── */}
       {loading ? (
@@ -685,7 +733,7 @@ const CallHistoryCard = ({ userId, role }) => {
                     </td>
                     <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
                       {cashAtStart != null && cashAtEnd != null
-                        ? <span className="flex items-center gap-1 text-xs font-medium text-neutral-600">
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600">
                             <span className="font-bold">₹</span>{cashAtStart} → <span className="font-bold">₹</span>{cashAtEnd}
                           </span>
                         : <span className="text-xs text-neutral-300">—</span>
@@ -834,7 +882,8 @@ const CallHistoryCard = ({ userId, role }) => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 
@@ -2504,8 +2553,14 @@ const UserManagementSection = () => {
   }, [updateSuccess, dispatch]);
 
   // ── close detail after promote (user removed from list) ─────────────────
+  // Only acts on the promotingId truthy→falsy transition (a promote just
+  // finished) — not on every list change — so it doesn't fire on initial
+  // mount/reload while `users`/`hosts` are still empty and haven't loaded yet.
+  const prevPromotingIdRef = useRef(null);
   useEffect(() => {
-    if (!promotingId && selectedId) {
+    const justFinishedPromoting = prevPromotingIdRef.current != null && promotingId == null;
+    prevPromotingIdRef.current = promotingId;
+    if (justFinishedPromoting && selectedId) {
       const inList = [...users, ...hosts].find((u) => u._id === selectedId);
       if (!inList) setSelectedId(null);
     }
@@ -2593,6 +2648,17 @@ const UserManagementSection = () => {
     : ['Host', 'Phone', 'Status', 'Verified', 'Last Seen', 'Cash Wallet', 'Actions'];
 
   // ── detail page view ─────────────────────────────────────────────────────
+
+  // Deep-linked (reload) into a detail view — the list for this tab hasn't
+  // resolved yet, so the user genuinely isn't in `users`/`hosts` yet. Show a
+  // spinner instead of falling through to the list view below.
+  if (selectedId && !selectedUser && loading) {
+    return (
+      <div className="flex h-64 items-center justify-center gap-2 text-neutral-400">
+        <Loader2 size={20} className="animate-spin" /> Loading details…
+      </div>
+    );
+  }
 
   if (selectedUser) {
     return (

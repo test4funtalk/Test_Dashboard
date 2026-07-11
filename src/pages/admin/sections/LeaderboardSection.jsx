@@ -56,14 +56,14 @@ const PERIODS = [
 ];
 
 const SUMMARY_TILES = [
-  { key: 'totalCashEarned',    label: 'Total Cash Earned',    Icon: Banknote,   cash: true  },
-  { key: 'callCashEarned',     label: 'Call Cash Earned',     Icon: PhoneCall,  cash: true  },
-  { key: 'giftCashEarned',     label: 'Gift Cash Earned',     Icon: Gift,       cash: true  },
-  { key: 'totalCoinsDeducted', label: 'Total Coins Deducted', Icon: Coins,      cash: false },
-  { key: 'coinsDeducted',      label: 'Call Coins Deducted',  Icon: Coins,      cash: false },
-  { key: 'giftCoinsDeducted',  label: 'Gift Coins Deducted',  Icon: Coins,      cash: false },
-  { key: 'calls',              label: 'Total Calls',          Icon: PhoneCall,  cash: false },
-  { key: 'totalSeconds',       label: 'Total Call Duration',  Icon: Clock,      cash: false, duration: true },
+  { key: 'totalCashEarned',    label: 'Total Cash Earned',    Icon: Banknote,   cash: true,  caption: 'All cash earned by hosts'  },
+  { key: 'callCashEarned',     label: 'Call Cash Earned',     Icon: PhoneCall,  cash: true,  caption: 'Cash earned from calls'    },
+  { key: 'giftCashEarned',     label: 'Gift Cash Earned',     Icon: Gift,       cash: true,  caption: 'Cash earned from gifts'    },
+  { key: 'totalCoinsDeducted', label: 'Total Coins Deducted', Icon: Coins,      cash: false, caption: 'Coins deducted from users' },
+  { key: 'coinsDeducted',      label: 'Call Coins Deducted',  Icon: Coins,      cash: false, caption: 'Coins deducted for calls'  },
+  { key: 'giftCoinsDeducted',  label: 'Gift Coins Deducted',  Icon: Coins,      cash: false, caption: 'Coins deducted for gifts'  },
+  { key: 'calls',              label: 'Total Calls',          Icon: PhoneCall,  cash: false, caption: 'Calls in this period'      },
+  { key: 'totalSeconds',       label: 'Total Call Duration',  Icon: Clock,      cash: false, duration: true, caption: 'Cumulative call time' },
 ];
 
 const RANK_STYLES = [
@@ -165,23 +165,44 @@ const TopHostsTab = () => {
         </div>
       )}
 
-      {/* Earnings summary tiles */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {SUMMARY_TILES.map(({ key, label, Icon, cash, duration }) => {
-          const raw = summary?.[key];
-          const value = duration ? fmtDuration(raw) : cash ? fmtINR(raw) : fmtNum(raw);
-          return (
-            <div key={key} className="rounded-2xl border border-neutral-200 bg-white p-3 sm:p-4">
-              <div className="flex items-start justify-between">
-                <p className={`text-lg font-black sm:text-xl ${cash ? 'text-green-700' : 'text-neutral-800'}`}>
-                  {loading && !data ? '—' : value}
-                </p>
-                <Icon size={16} className="opacity-30" />
+      {/* Earnings summary tiles — styled like the Platform Stats overview KPI cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-5">
+        {(() => {
+          const maxAbs = Math.max(...SUMMARY_TILES.map(({ key }) => Math.abs(Number(summary?.[key] ?? 0))), 1);
+          return SUMMARY_TILES.map(({ key, label, Icon, cash, duration, caption }) => {
+            const raw = summary?.[key];
+            const value = duration ? fmtDuration(raw) : cash ? fmtINR(raw) : fmtNum(raw);
+            const pct = Math.round((Math.abs(Number(raw ?? 0)) / maxAbs) * 100);
+            const filledBars = Math.round((pct / 100) * BAR_COUNT);
+            return (
+              <div key={key} className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-black">
+                    <Icon size={15} />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className={`text-2xl font-bold sm:text-3xl ${cash ? 'text-green-700' : 'text-neutral-900'}`}>
+                    {loading && !data ? '—' : value}
+                  </span>
+                </div>
+                <div className="mt-3 text-xs text-neutral-400">
+                  <span className="truncate">{caption}</span>
+                </div>
+                <div className="mt-2.5 flex h-6 items-end gap-[2px] overflow-hidden">
+                  {Array.from({ length: BAR_COUNT }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`min-w-0 flex-1 rounded-full ${i < filledBars ? 'bg-neutral-800' : 'bg-neutral-200'}`}
+                      style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
+                    />
+                  ))}
+                </div>
               </div>
-              <p className="mt-0.5 text-xs font-medium text-neutral-400">{label}</p>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
 
       {/* Top hosts table */}
@@ -524,7 +545,7 @@ const PlatformStatsTab = () => {
                   {Array.from({ length: BAR_COUNT }).map((_, i) => (
                     <div
                       key={i}
-                      className={`min-w-0 flex-1 rounded-full ${i < filledBars ? 'bg-neutral-900' : 'bg-neutral-200'}`}
+                      className={`min-w-0 flex-1 rounded-full ${i < filledBars ? 'bg-neutral-800' : 'bg-neutral-200'}`}
                       style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
                     />
                   ))}
@@ -578,7 +599,7 @@ const PlatformStatsTab = () => {
                   {Array.from({ length: BAR_COUNT }).map((_, i) => (
                     <div
                       key={i}
-                      className={`min-w-0 flex-1 rounded-full ${i < filledBars ? 'bg-neutral-900' : 'bg-neutral-200'}`}
+                      className={`min-w-0 flex-1 rounded-full ${i < filledBars ? 'bg-neutral-800' : 'bg-neutral-200'}`}
                       style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
                     />
                   ))}
@@ -791,7 +812,7 @@ const PlatformStatsTab = () => {
                         {Array.from({ length: BAR_COUNT }).map((_, i) => (
                           <div
                             key={i}
-                            className={`min-w-0 flex-1 rounded-full ${i < filledBars ? 'bg-neutral-900' : 'bg-neutral-200'}`}
+                            className={`min-w-0 flex-1 rounded-full ${i < filledBars ? 'bg-neutral-800' : 'bg-neutral-200'}`}
                             style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
                           />
                         ))}
