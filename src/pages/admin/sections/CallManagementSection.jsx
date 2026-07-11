@@ -4,7 +4,8 @@ import {
   PhoneCall, Phone, Video, Search, RefreshCw, AlertCircle,
   Loader2, ChevronLeft, ChevronRight, Coins, Gift,
   Settings, Plus, Pencil, Trash2, X, CheckCircle, Save, Wallet,
-  TrendingUp, TrendingDown,
+  TrendingUp, TrendingDown, PhoneOff, PhoneMissed, PhoneIncoming,
+  Clock, Ban,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -47,6 +48,15 @@ const STATUS_OPTIONS = [
   { value: 'pending',    label: 'Pending'      },
 ];
 
+const STATUS_CARDS = [
+  { key: 'ended',     label: 'Ended Calls',     Icon: PhoneOff,      iconClass: CALL_STATUS_STYLES.ended     },
+  { key: 'missed',    label: 'Missed Calls',    Icon: PhoneMissed,   iconClass: CALL_STATUS_STYLES.missed    },
+  { key: 'rejected',  label: 'Rejected Calls',  Icon: Ban,           iconClass: CALL_STATUS_STYLES.rejected  },
+  { key: 'active',    label: 'Active Calls',    Icon: PhoneIncoming, iconClass: CALL_STATUS_STYLES.active    },
+  { key: 'pending',   label: 'Pending Calls',   Icon: Clock,         iconClass: CALL_STATUS_STYLES.pending   },
+  { key: 'cancelled', label: 'Cancelled Calls', Icon: X,             iconClass: CALL_STATUS_STYLES.cancelled },
+];
+
 const TYPE_OPTIONS = [
   { value: '',      label: 'All Types' },
   { value: 'voice', label: 'Voice'     },
@@ -74,13 +84,13 @@ const SECTION_TABS = [
 const BAR_HEIGHTS = [45, 90, 60, 100, 55, 80, 40, 95, 65, 85, 50, 75, 40, 100, 60, 90];
 const BAR_COUNT = 32;
 
-const KpiCard = ({ label, value, pct, Icon, trend }) => {
+const KpiCard = ({ label, value, pct, Icon, trend, iconClass = 'bg-neutral-100 text-black' }) => {
   const filledBars = Math.round((pct / 100) * BAR_COUNT);
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-black">
+        <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${iconClass}`}>
           <Icon size={15} />
         </div>
       </div>
@@ -125,6 +135,7 @@ const CallsTab = () => {
   const [page, setPage]   = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState({ pending: 0, active: 0, ended: 0, rejected: 0, missed: 0, cancelled: 0 });
 
   const [activeCallId, setActiveCallId] = useState(null);
 
@@ -134,7 +145,7 @@ const CallsTab = () => {
     try {
       const { data } = await api.get('/api/admin/calls', {
         params: {
-          page, limit: 15,
+          page, limit: 100,
           ...(debouncedSearch && { search: debouncedSearch }),
           ...(status   && { status }),
           ...(callType && { callType }),
@@ -148,6 +159,7 @@ const CallsTab = () => {
       setCalls(list);
       setPages(pagination.pages ?? 1);
       setTotal(pagination.total ?? list.length);
+      if (data?.statusCounts) setStatusCounts(data.statusCounts);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load calls');
     } finally {
@@ -182,7 +194,7 @@ const CallsTab = () => {
     <div className="space-y-4 sm:space-y-6">
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
         <KpiCard
           label="Total Calls"
           value={fmtNum(total)}
@@ -190,13 +202,17 @@ const CallsTab = () => {
           Icon={PhoneCall}
           trend="up"
         />
-        <KpiCard
-          label="Showing"
-          value={fmtNum(calls.length)}
-          pct={total > 0 ? Math.round((calls.length / total) * 100) : 0}
-          Icon={Search}
-          trend="up"
-        />
+        {STATUS_CARDS.map(({ key, label, Icon, iconClass }) => (
+          <KpiCard
+            key={key}
+            label={label}
+            value={fmtNum(statusCounts[key])}
+            pct={total > 0 ? Math.round(((statusCounts[key] ?? 0) / total) * 100) : 0}
+            Icon={Icon}
+            trend="up"
+            iconClass={iconClass}
+          />
+        ))}
       </div>
 
       {/* Main card */}
@@ -324,7 +340,7 @@ const CallsTab = () => {
                       className="cursor-pointer transition-colors hover:bg-neutral-50"
                     >
                       <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
-                        {(page - 1) * 15 + index + 1}
+                        {(page - 1) * 100 + index + 1}
                       </td>
                       <td className="border border-neutral-200 px-4 py-3">
                         <div className="flex items-center gap-2">

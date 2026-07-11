@@ -154,7 +154,7 @@ const PaymentManagementSection = () => {
   }, [setSearchParams]);
 
   const [purchases,    setPurchases]    = useState([]);
-  const [pagination,   setPagination]   = useState({ total: 0, page: 1, limit: 20, pages: 0 });
+  const [pagination,   setPagination]   = useState({ total: 0, page: 1, limit: 100, pages: 0 });
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState(null);
   const [aggStats,     setAggStats]     = useState({ totalAmount: 0, totalCoins: 0, successCount: 0, pendingCount: 0, failedCount: 0 });
@@ -182,7 +182,7 @@ const PaymentManagementSection = () => {
     setError(null);
     try {
       const params = {
-        page: targetPage, limit: 20,
+        page: targetPage, limit: 100,
         ...getPeriodParams(period, customFrom, customTo),
       };
       if (activeStatus)    params.status = activeStatus;
@@ -197,8 +197,8 @@ const PaymentManagementSection = () => {
       setPagination({
         total: pg.total  ?? rows.length,
         page:  pg.page   ?? targetPage,
-        limit: pg.limit  ?? 20,
-        pages: pg.pages  ?? Math.ceil((pg.total ?? rows.length) / 20),
+        limit: pg.limit  ?? 100,
+        pages: pg.pages  ?? Math.ceil((pg.total ?? rows.length) / 100),
       });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to load purchases');
@@ -273,58 +273,74 @@ const PaymentManagementSection = () => {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         {/* Total Purchase Amount */}
-        <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-5">
-          <div className="flex items-start justify-between">
-            {statsLoading
-              ? <Loader2 size={22} className="animate-spin opacity-50 mt-1" />
-              : <p className="text-xl font-black sm:text-2xl leading-tight">{fmtAmount(aggStats.totalAmount)}</p>
-            }
-            <IndianRupee size={18} className="opacity-40 flex-shrink-0" />
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-medium text-neutral-700">Total Amount</span>
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-neutral-900">
+              <IndianRupee size={15} />
+            </div>
           </div>
-          <p className="mt-1 text-xs font-medium opacity-60 sm:text-sm">Total Amount</p>
+          <div className="mt-2">
+            {statsLoading
+              ? <Loader2 size={22} className="animate-spin text-neutral-300" />
+              : <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{fmtAmount(aggStats.totalAmount)}</span>
+            }
+          </div>
         </div>
 
         {/* Total Coins */}
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 sm:rounded-2xl sm:p-5">
-          <div className="flex items-start justify-between">
-            {statsLoading
-              ? <Loader2 size={22} className="animate-spin text-amber-400 mt-1" />
-              : <p className="text-2xl font-black text-amber-700 sm:text-3xl">{aggStats.totalCoins.toLocaleString()}</p>
-            }
-            <Coins size={18} className="text-amber-400 opacity-60 flex-shrink-0" />
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-medium text-neutral-700">Total Coins</span>
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-amber-600">
+              <Coins size={15} />
+            </div>
           </div>
-          <p className="mt-0.5 text-xs font-medium text-amber-600 sm:mt-1 sm:text-sm">Total Coins</p>
+          <div className="mt-2">
+            {statsLoading
+              ? <Loader2 size={22} className="animate-spin text-neutral-300" />
+              : <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{aggStats.totalCoins.toLocaleString()}</span>
+            }
+          </div>
         </div>
 
         {/* Successful */}
-        <div className="rounded-xl border border-green-200 bg-green-50 p-3 sm:rounded-2xl sm:p-5">
-          <div className="flex items-start justify-between">
-            {statsLoading
-              ? <Loader2 size={22} className="animate-spin text-green-400 mt-1" />
-              : <p className="text-2xl font-black text-green-700 sm:text-3xl">{aggStats.successCount}</p>
-            }
-            <CheckCircle size={18} className="text-green-400 opacity-60 flex-shrink-0" />
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-medium text-neutral-700">Successful</span>
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-green-600">
+              <CheckCircle size={15} />
+            </div>
           </div>
-          <p className="mt-0.5 text-xs font-medium text-green-600 sm:mt-1 sm:text-sm">Successful</p>
+          <div className="mt-2">
+            {statsLoading
+              ? <Loader2 size={22} className="animate-spin text-neutral-300" />
+              : <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{aggStats.successCount}</span>
+            }
+          </div>
         </div>
 
         {/* Pending + Failed */}
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-5">
-          <div className="flex items-start justify-between">
-            {statsLoading
-              ? <Loader2 size={22} className="animate-spin text-neutral-400 mt-1" />
-              : <p className="text-2xl font-black text-neutral-700 sm:text-3xl">{pagination.total}</p>
-            }
-            <CreditCard size={18} className="text-neutral-400 opacity-60 flex-shrink-0" />
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-medium text-neutral-700">Total Records</span>
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700">
+              <CreditCard size={15} />
+            </div>
           </div>
-          <div className="mt-0.5 flex items-center gap-2 sm:mt-1">
-            <p className="text-xs font-medium text-neutral-500 sm:text-sm">Total Records</p>
-            {!statsLoading && (aggStats.pendingCount > 0 || aggStats.failedCount > 0) && (
-              <span className="flex items-center gap-1.5 text-[10px] text-neutral-400">
-                <span className="text-amber-500">{aggStats.pendingCount}p</span>
-                <span className="text-red-500">{aggStats.failedCount}f</span>
-              </span>
-            )}
+          <div className="mt-2 flex items-baseline gap-2">
+            {statsLoading
+              ? <Loader2 size={22} className="animate-spin text-neutral-300" />
+              : <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{pagination.total}</span>
+            }
+          </div>
+          <div className="mt-3 flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-600">
+              {statsLoading ? '—' : aggStats.pendingCount} pending
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">
+              {statsLoading ? '—' : aggStats.failedCount} failed
+            </span>
           </div>
         </div>
       </div>
