@@ -4,7 +4,7 @@ import api from '../../../services/api';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-const EMPTY_FORM = { minVersion: '', latestVersion: '', androidUrl: '', iosUrl: '' };
+const EMPTY_FORM = { minVersion: '', latestVersion: '', androidUrl: '', iosUrl: '', forceUpdate: true };
 
 const fmtDateTime = (d) =>
   d ? new Date(d).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -39,6 +39,7 @@ const AppVersionOverlay = ({ onClose }) => {
         latestVersion: doc.latestVersion || '',
         androidUrl: doc.androidUrl || '',
         iosUrl: doc.iosUrl || '',
+        forceUpdate: doc.forceUpdate ?? true,
       } : EMPTY_FORM);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to load app version config');
@@ -61,9 +62,12 @@ const AppVersionOverlay = ({ onClose }) => {
     setSaveError(null);
     setSaveSuccess(false);
 
-    // first-ever save: no existing record, so the upsert needs all four fields
+    // first-ever save: no existing record, so the upsert needs all fields
     const payload = record
-      ? Object.fromEntries(FIELDS.filter(({ key }) => form[key] !== (record[key] || '')).map(({ key }) => [key, form[key]]))
+      ? {
+          ...Object.fromEntries(FIELDS.filter(({ key }) => form[key] !== (record[key] || '')).map(({ key }) => [key, form[key]])),
+          ...(form.forceUpdate !== (record.forceUpdate ?? true) ? { forceUpdate: form.forceUpdate } : {}),
+        }
       : { ...form };
 
     if (Object.keys(payload).length === 0) {
@@ -81,6 +85,7 @@ const AppVersionOverlay = ({ onClose }) => {
         latestVersion: doc.latestVersion || '',
         androidUrl: doc.androidUrl || '',
         iosUrl: doc.iosUrl || '',
+        forceUpdate: doc.forceUpdate ?? true,
       } : EMPTY_FORM);
       setSaveSuccess(true);
     } catch (err) {
@@ -167,6 +172,35 @@ const AppVersionOverlay = ({ onClose }) => {
                   />
                 </div>
               ))}
+
+              <div className="rounded-xl border border-neutral-200 px-4 py-3">
+                <p className="text-sm font-medium text-neutral-700">Force Update</p>
+                <p className="mt-0.5 text-xs text-neutral-400">Require users below the minimum version to update</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleChange('forceUpdate', true)}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      form.forceUpdate
+                        ? 'bg-black text-white'
+                        : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                    }`}
+                  >
+                    Enabled
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('forceUpdate', false)}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      !form.forceUpdate
+                        ? 'bg-black text-white'
+                        : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                    }`}
+                  >
+                    Disabled
+                  </button>
+                </div>
+              </div>
 
               <button
                 type="submit"
