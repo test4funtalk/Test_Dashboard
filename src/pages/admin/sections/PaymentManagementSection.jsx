@@ -497,7 +497,10 @@ const PaymentManagementSection = () => {
                       <td className="px-4 py-3 sm:px-5">
                         <div className="space-y-0.5">
                           <p className="text-sm font-medium text-neutral-800">
-                            {user?.username || user?.phone || '—'}
+                            {p.username || user?.username || '—'}
+                          </p>
+                          <p className="text-xs text-neutral-500">
+                            {p.phone || user?.phone || '—'}
                           </p>
                           <CopyChip value={userIdStr} display={`#${String(userIdStr).slice(-10)}`} />
                           <p className="text-[10px] text-neutral-300 font-mono">{p._id.slice(-8)}</p>
