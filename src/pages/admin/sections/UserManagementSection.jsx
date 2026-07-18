@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -9,7 +9,7 @@ import {
   PhoneCall, Wallet, TrendingUp, TrendingDown, Minus, Plus,
   Copy, Check, Receipt, Package, IndianRupee,
   IdCard, Banknote, Landmark, ExternalLink, ImageOff, Ban, CreditCard,
-  PhoneOff, PhoneMissed,
+  PhoneOff, PhoneMissed, Upload,
 } from 'lucide-react';
 import {
   fetchUsers, updateUser, deleteUser,
@@ -1922,6 +1922,149 @@ const WithdrawalHistoryCard = ({ hostId }) => {
   );
 };
 
+// ─── host online time card (single host, with period filter) ───────────────────
+
+const ONLINE_TIME_PERIODS = [
+  { id: 'today',     label: 'Today'      },
+  { id: 'thisweek',  label: 'This Week'  },
+  { id: 'thismonth', label: 'This Month' },
+  { id: 'all',       label: 'All Time'   },
+];
+
+const HostOnlineTimeCard = ({ hostId }) => {
+  const [period,  setPeriod]  = useState('today');
+  const [detail,  setDetail]  = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+
+  const fetchOnlineTime = useCallback(async (targetPeriod) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get(`/api/host-online-time/admin/host/${hostId}`, { params: { period: targetPeriod } });
+      setDetail(data?.data ?? null);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load host online time');
+    } finally {
+      setLoading(false);
+    }
+  }, [hostId]);
+
+  useEffect(() => { fetchOnlineTime(period); }, [fetchOnlineTime, period]);
+
+  const onPeriodChange = (p) => setPeriod(p);
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white">
+
+      {/* Header */}
+      <div className="flex flex-col gap-3 border-b border-neutral-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <Clock size={15} className="text-neutral-400" />
+          <p className="text-sm font-semibold text-neutral-800">Online Time</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-0.5 rounded-lg border border-neutral-200 p-0.5">
+            {ONLINE_TIME_PERIODS.map(({ id, label }) => (
+              <button key={id} onClick={() => onPeriodChange(id)}
+                className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
+                  period === id
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => fetchOnlineTime(period)}
+            disabled={loading}
+            title="Refresh"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-neutral-400">
+          <Loader2 size={18} className="animate-spin" /> Loading online time…
+        </div>
+      ) : error ? (
+        <div className="m-4 flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+          <span className="flex items-center gap-2"><AlertCircle size={14} />{error}</span>
+          <button onClick={() => fetchOnlineTime(period)}
+            className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2 py-1 text-xs font-medium">
+            Retry
+          </button>
+        </div>
+      ) : (
+        <div className="p-4 sm:p-5 space-y-4">
+          {/* Totals */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl bg-neutral-900 p-3 text-white">
+              <p className="text-lg font-black sm:text-xl">{detail?.totalFormatted ?? '—'}</p>
+              <p className="mt-0.5 text-xs opacity-70">Online Time</p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-white p-3">
+              <p className="text-lg font-black text-neutral-800 sm:text-xl">{fmtNum(detail?.sessionCount)}</p>
+              <p className="mt-0.5 text-xs text-neutral-400">Sessions</p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-white p-3">
+              <p className="text-lg font-black capitalize text-neutral-800 sm:text-xl">{detail?.period ?? '—'}</p>
+              <p className="mt-0.5 text-xs text-neutral-400">Period</p>
+            </div>
+          </div>
+
+          {/* Session history */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">Session History</p>
+            {detail?.sessions?.length ? (
+              <div className="overflow-x-auto rounded-xl border border-neutral-100">
+                <table className="w-full min-w-[500px] text-sm">
+                  <thead className="bg-neutral-50">
+                    <tr>
+                      {['Start', 'End', 'Duration', 'Status'].map((h) => (
+                        <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-50">
+                    {detail.sessions.map((s) => (
+                      <tr key={s._id}>
+                        <td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">{fmtDateTime(s.startTime)}</td>
+                        <td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">
+                          {s.endTime ? fmtDateTime(s.endTime) : <span className="text-green-600">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">{fmtDuration(s.durationSeconds)}</td>
+                        <td className="px-3 py-2">
+                          {s.isActive ? (
+                            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">Active</span>
+                          ) : (
+                            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">Closed</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="rounded-xl border border-dashed border-neutral-200 px-3 py-6 text-center text-sm text-neutral-400">
+                No sessions recorded for this period
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── host KYC details card (view + inline approve/reject) ──────────────────────
 
 const KYC_STATUS_STYLES = {
@@ -1960,16 +2103,68 @@ const ImageLink = ({ label, url, className = '' }) => (
   </div>
 );
 
+const editFormFromKyc = (kyc) => ({
+  panNumber:         kyc.pan?.number || '',
+  nameAsPerPan:      kyc.pan?.nameAsPerPan || '',
+  dob:               kyc.pan?.dob ? new Date(kyc.pan.dob).toISOString().slice(0, 10) : '',
+  accountHolderName: kyc.bank?.accountHolderName || '',
+  accountNumber:     kyc.bank?.accountNumber || '',
+  bankName:          kyc.bank?.bankName || '',
+  ifscCode:          kyc.bank?.ifscCode || '',
+  status:            kyc.status || 'pending',
+  adminNote:         kyc.adminNote || '',
+});
+
+const ImageEditPicker = ({ label, currentUrl, file, onChange }) => {
+  const previewUrl = useMemo(
+    () => (file ? URL.createObjectURL(file) : (currentUrl || null)),
+    [file, currentUrl]
+  );
+  useEffect(() => {
+    if (!file) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [file, previewUrl]);
+
+  return (
+    <div className="min-w-0 flex-1 basis-[160px]">
+      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-400">{label}</p>
+      {previewUrl ? (
+        <div style={{ aspectRatio: ID_CARD_ASPECT }} className="mb-2 w-full max-w-[220px] overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
+          <img src={previewUrl} alt={label} className="h-full w-full object-contain" />
+        </div>
+      ) : (
+        <div style={{ aspectRatio: ID_CARD_ASPECT }} className="mb-2 flex w-full max-w-[220px] items-center justify-center rounded-lg border border-dashed border-neutral-200 text-neutral-300">
+          <ImageOff size={20} />
+        </div>
+      )}
+      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition hover:border-neutral-400 hover:bg-neutral-50">
+        <Upload size={12} /> {file ? 'Change file' : 'Replace image'}
+        <input
+          type="file"
+          accept="image/jpeg,image/png"
+          className="hidden"
+          onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+        />
+      </label>
+      {file && <p className="mt-1 truncate text-[11px] text-neutral-400">{file.name}</p>}
+    </div>
+  );
+};
+
 const HostKycDetailsCard = ({ userId }) => {
   const [kyc, setKyc]           = useState(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
   const [notFound, setNotFound] = useState(false);
 
-  const [actionMode, setActionMode]   = useState(null); // 'approve' | 'reject'
+  const [actionMode, setActionMode]   = useState(null); // 'approve' | 'reject' | 'edit'
   const [note, setNote]               = useState('');
   const [actionBusy, setActionBusy]   = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [editForm, setEditForm]       = useState(null);
+  const [editFiles, setEditFiles]     = useState({ panImage: null, aadhaarFront: null, aadhaarBack: null });
+  const setEditField = (k, v) => setEditForm((f) => ({ ...f, [k]: v }));
+  const setEditFile  = (k, file) => setEditFiles((f) => ({ ...f, [k]: file }));
 
   const loadKyc = useCallback(async () => {
     setLoading(true);
@@ -1988,7 +2183,15 @@ const HostKycDetailsCard = ({ userId }) => {
 
   useEffect(() => { loadKyc(); }, [loadKyc]);
 
-  const startAction  = (mode) => { setActionMode(mode); setNote(''); setActionError(null); };
+  const startAction = (mode) => {
+    setActionMode(mode);
+    setNote('');
+    setActionError(null);
+    if (mode === 'edit') {
+      setEditForm(editFormFromKyc(kyc));
+      setEditFiles({ panImage: null, aadhaarFront: null, aadhaarBack: null });
+    }
+  };
   const cancelAction = () => { setActionMode(null); setNote(''); setActionError(null); };
 
   const submitAction = async () => {
@@ -2004,6 +2207,42 @@ const HostKycDetailsCard = ({ userId }) => {
       cancelAction();
     } catch (err) {
       setActionError(err.response?.data?.message || `Failed to ${actionMode} submission`);
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const submitEdit = async () => {
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const fields = {
+        panNumber:         editForm.panNumber.trim(),
+        nameAsPerPan:      editForm.nameAsPerPan.trim(),
+        dob:               editForm.dob,
+        accountHolderName: editForm.accountHolderName.trim(),
+        accountNumber:     editForm.accountNumber.trim(),
+        bankName:          editForm.bankName.trim(),
+        ifscCode:          editForm.ifscCode.trim().toUpperCase(),
+        status:            editForm.status,
+        adminNote:         editForm.adminNote.trim(),
+      };
+
+      const hasFiles = editFiles.panImage || editFiles.aadhaarFront || editFiles.aadhaarBack;
+      let payload = fields;
+      if (hasFiles) {
+        payload = new FormData();
+        Object.entries(fields).forEach(([k, v]) => payload.append(k, v));
+        if (editFiles.panImage)     payload.append('panImage', editFiles.panImage);
+        if (editFiles.aadhaarFront) payload.append('aadhaarFront', editFiles.aadhaarFront);
+        if (editFiles.aadhaarBack)  payload.append('aadhaarBack', editFiles.aadhaarBack);
+      }
+
+      const { data } = await api.patch(`/api/admin/kyc/${kyc._id}`, payload);
+      setKyc((prev) => ({ ...prev, ...(data?.data ?? fields) }));
+      cancelAction();
+    } catch (err) {
+      setActionError(err.response?.data?.message || 'Failed to update KYC submission');
     } finally {
       setActionBusy(false);
     }
@@ -2050,22 +2289,32 @@ const HostKycDetailsCard = ({ userId }) => {
           </span>
           <p className="text-xs text-neutral-400">Submitted {fmtDateTime(kyc.createdAt)}</p>
         </div>
-        {kyc.status === 'pending' && !actionMode && (
+        {!actionMode && (
           <div className="flex gap-2">
-            <button onClick={() => startAction('approve')}
-              className="flex items-center gap-1.5 rounded-lg border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 transition hover:bg-green-50">
-              <CheckCircle size={13} /> Approve
-            </button>
-            <button onClick={() => startAction('reject')}
-              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50">
-              <Ban size={13} /> Reject
-            </button>
+            {kyc.status === 'pending' && (
+              <>
+                <button onClick={() => startAction('approve')}
+                  className="flex items-center gap-1.5 rounded-lg border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 transition hover:bg-green-50">
+                  <CheckCircle size={13} /> Approve
+                </button>
+                <button onClick={() => startAction('reject')}
+                  className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50">
+                  <Ban size={13} /> Reject
+                </button>
+              </>
+            )}
+            {kyc.status === 'approved' && (
+              <button onClick={() => startAction('edit')}
+                className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:border-neutral-400 hover:bg-neutral-50">
+                <Pencil size={13} /> Edit
+              </button>
+            )}
           </div>
         )}
       </div>
 
       {/* Action panel */}
-      {actionMode && (
+      {(actionMode === 'approve' || actionMode === 'reject') && (
         <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
           <p className="text-sm font-semibold capitalize">{actionMode} this submission</p>
           <div>
@@ -2096,6 +2345,157 @@ const HostKycDetailsCard = ({ userId }) => {
               }`}>
               {actionBusy && <Loader2 size={13} className="animate-spin" />}
               {actionBusy ? 'Submitting…' : `Confirm ${actionMode === 'approve' ? 'Approval' : 'Rejection'}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {actionMode === 'edit' && editForm && (
+        <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
+          <p className="text-sm font-semibold">Edit KYC Details</p>
+
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+              <CreditCard size={12} /> PAN Details
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-500">PAN Number</label>
+                <input
+                  value={editForm.panNumber}
+                  onChange={(e) => setEditField('panNumber', e.target.value.toUpperCase())}
+                  placeholder="ABCDE1234F"
+                  maxLength={10}
+                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-500">Date of Birth</label>
+                <input
+                  type="date"
+                  value={editForm.dob}
+                  onChange={(e) => setEditField('dob', e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="mb-1 block text-xs font-medium text-neutral-500">Name as per PAN</label>
+                <input
+                  value={editForm.nameAsPerPan}
+                  onChange={(e) => setEditField('nameAsPerPan', e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+            </div>
+            <div className="mt-3">
+              <ImageEditPicker
+                label="PAN Image"
+                currentUrl={kyc.pan?.imageUrl}
+                file={editFiles.panImage}
+                onChange={(f) => setEditFile('panImage', f)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+              <IdCard size={12} /> Aadhaar
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <ImageEditPicker
+                label="Front"
+                currentUrl={kyc.aadhaar?.frontImageUrl}
+                file={editFiles.aadhaarFront}
+                onChange={(f) => setEditFile('aadhaarFront', f)}
+              />
+              <ImageEditPicker
+                label="Back"
+                currentUrl={kyc.aadhaar?.backImageUrl}
+                file={editFiles.aadhaarBack}
+                onChange={(f) => setEditFile('aadhaarBack', f)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+              <Landmark size={12} /> Bank Details
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-500">Account Holder</label>
+                <input
+                  value={editForm.accountHolderName}
+                  onChange={(e) => setEditField('accountHolderName', e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-500">Account Number</label>
+                <input
+                  value={editForm.accountNumber}
+                  onChange={(e) => setEditField('accountNumber', e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-500">Bank Name</label>
+                <input
+                  value={editForm.bankName}
+                  onChange={(e) => setEditField('bankName', e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-500">IFSC Code</label>
+                <input
+                  value={editForm.ifscCode}
+                  onChange={(e) => setEditField('ifscCode', e.target.value.toUpperCase())}
+                  placeholder="HDFC0001234"
+                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-neutral-500">Status</label>
+              <select
+                value={editForm.status}
+                onChange={(e) => setEditField('status', e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm capitalize outline-none focus:border-neutral-400"
+              >
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-neutral-500">Admin Note</label>
+              <input
+                value={editForm.adminNote}
+                onChange={(e) => setEditField('adminNote', e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+              />
+            </div>
+          </div>
+
+          {actionError && (
+            <p className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+              <AlertCircle size={12} /> {actionError}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={cancelAction}
+              className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50">
+              Cancel
+            </button>
+            <button onClick={submitEdit} disabled={actionBusy}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-900 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50">
+              {actionBusy && <Loader2 size={13} className="animate-spin" />}
+              {actionBusy ? 'Saving…' : 'Save Changes'}
             </button>
           </div>
         </div>
@@ -2189,9 +2589,10 @@ const USER_DETAIL_TABS = [
 ];
 
 const HOST_DETAIL_TABS = [
-  { id: 'wallet', label: 'Wallet',      Icon: Wallet  },
-  { id: 'calls',  label: 'Calls',       Icon: PhoneCall },
-  { id: 'kyc',    label: 'KYC Details', Icon: IdCard  },
+  { id: 'wallet',     label: 'Wallet',      Icon: Wallet  },
+  { id: 'calls',      label: 'Calls',       Icon: PhoneCall },
+  { id: 'kyc',        label: 'KYC Details', Icon: IdCard  },
+  { id: 'onlineTime', label: 'Online Time', Icon: Clock   },
 ];
 
 const USER_DTAB_IDS = new Set(USER_DETAIL_TABS.map((t) => t.id));
@@ -2416,6 +2817,10 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
           ) : dtab === 'kyc' ? (
             <div className="p-4 sm:p-5">
               <HostKycDetailsCard userId={user._id} />
+            </div>
+          ) : dtab === 'onlineTime' ? (
+            <div className="p-4 sm:p-5">
+              <HostOnlineTimeCard hostId={user._id} />
             </div>
           ) : (
             <CallHistoryCard userId={user._id} role="host" />

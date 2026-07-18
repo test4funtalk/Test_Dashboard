@@ -121,6 +121,7 @@ const CallDetailModal = ({ callId, onClose }) => {
               {call.endedBy && (
                 <span className="text-xs text-neutral-400">Ended by <span className="font-medium capitalize text-neutral-600">{call.endedBy}</span></span>
               )}
+              <span className="text-xs text-neutral-400">Reason: <span className="font-medium text-neutral-600">{call.endReason || '—'}</span></span>
             </div>
 
             {/* Participants */}

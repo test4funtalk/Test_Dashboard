@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   IdCard, Clock, CheckCircle2, XCircle, Search,
   AlertCircle, Loader2, ChevronLeft, ChevronRight,
-  RefreshCw, X, Check, Ban, CreditCard, Landmark,
+  RefreshCw, X, Check, Ban, CreditCard, Landmark, Pencil, Upload,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -31,19 +31,78 @@ const STATUS_FILTERS = [
 
 const VALID_STATUSES = new Set(STATUS_FILTERS.map((s) => s.value));
 
+// deterministic bar-height pattern for the barcode-style mini chart on stat cards
+const BAR_HEIGHTS = [45, 90, 60, 100, 55, 80, 40, 95, 65, 85, 50, 75, 40, 100, 60, 90];
+const BAR_COUNT = 32;
+
 const StatusBadge = ({ status }) => (
   <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[status] || 'bg-neutral-100 text-neutral-600'}`}>
     {status || '—'}
   </span>
 );
 
-// ─── action modal (view + approve/reject) ──────────────────────────────────────
+// ─── action modal (view + approve/reject/edit) ──────────────────────────────────
+
+const toDateInput = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+
+const editFormFromSubmission = (submission) => ({
+  panNumber:         submission.pan?.number || '',
+  nameAsPerPan:      submission.pan?.nameAsPerPan || '',
+  dob:               toDateInput(submission.pan?.dob),
+  accountHolderName: submission.bank?.accountHolderName || '',
+  accountNumber:     submission.bank?.accountNumber || '',
+  bankName:          submission.bank?.bankName || '',
+  ifscCode:          submission.bank?.ifscCode || '',
+  status:            submission.status || 'pending',
+  adminNote:         submission.adminNote || '',
+});
+
+const ImageEditPicker = ({ label, currentUrl, file, onChange }) => {
+  const previewUrl = useMemo(
+    () => (file ? URL.createObjectURL(file) : (currentUrl || null)),
+    [file, currentUrl]
+  );
+  useEffect(() => {
+    if (!file) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [file, previewUrl]);
+
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-medium text-neutral-500">{label}</p>
+      {previewUrl ? (
+        <div className="mb-2 aspect-[1.586/1] w-full max-w-[200px] overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
+          <img src={previewUrl} alt={label} className="h-full w-full object-contain" />
+        </div>
+      ) : (
+        <div className="mb-2 flex aspect-[1.586/1] w-full max-w-[200px] items-center justify-center rounded-lg border border-dashed border-neutral-200 text-xs text-neutral-300">
+          No image
+        </div>
+      )}
+      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition hover:border-neutral-400 hover:bg-neutral-50">
+        <Upload size={12} /> {file ? 'Change file' : 'Replace image'}
+        <input
+          type="file"
+          accept="image/jpeg,image/png"
+          className="hidden"
+          onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+        />
+      </label>
+      {file && <p className="mt-1 truncate text-[11px] text-neutral-400">{file.name}</p>}
+    </div>
+  );
+};
 
 const KycActionModal = ({ submission, mode, onClose, onDone }) => {
   const [note, setNote]       = useState('');
   const [busy, setBusy]       = useState(false);
   const [error, setError]     = useState(null);
-  const [active, setActive]   = useState(mode); // 'view' | 'approve' | 'reject'
+  const [active, setActive]   = useState(mode); // 'view' | 'approve' | 'reject' | 'edit'
+  const [editForm, setEditForm] = useState(() => editFormFromSubmission(submission));
+  const [editFiles, setEditFiles] = useState({ panImage: null, aadhaarFront: null, aadhaarBack: null });
+
+  const setField = (k, v) => setEditForm((f) => ({ ...f, [k]: v }));
+  const setEditFile = (k, file) => setEditFiles((f) => ({ ...f, [k]: file }));
 
   const handleSubmit = async () => {
     if (active === 'reject' && !note.trim()) {
@@ -57,6 +116,41 @@ const KycActionModal = ({ submission, mode, onClose, onDone }) => {
       onDone(data?.data ?? { ...submission, status: active === 'approve' ? 'approved' : 'rejected' });
     } catch (err) {
       setError(err.response?.data?.message || `Failed to ${active} submission`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleEditSubmit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const fields = {
+        panNumber:         editForm.panNumber.trim(),
+        nameAsPerPan:      editForm.nameAsPerPan.trim(),
+        dob:               editForm.dob,
+        accountHolderName: editForm.accountHolderName.trim(),
+        accountNumber:     editForm.accountNumber.trim(),
+        bankName:          editForm.bankName.trim(),
+        ifscCode:          editForm.ifscCode.trim().toUpperCase(),
+        status:            editForm.status,
+        adminNote:         editForm.adminNote.trim(),
+      };
+
+      const hasFiles = editFiles.panImage || editFiles.aadhaarFront || editFiles.aadhaarBack;
+      let payload = fields;
+      if (hasFiles) {
+        payload = new FormData();
+        Object.entries(fields).forEach(([k, v]) => payload.append(k, v));
+        if (editFiles.panImage)     payload.append('panImage', editFiles.panImage);
+        if (editFiles.aadhaarFront) payload.append('aadhaarFront', editFiles.aadhaarFront);
+        if (editFiles.aadhaarBack)  payload.append('aadhaarBack', editFiles.aadhaarBack);
+      }
+
+      const { data } = await api.patch(`/api/admin/kyc/${submission._id}`, payload);
+      onDone(data?.data ?? { ...submission, ...fields });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update KYC submission');
     } finally {
       setBusy(false);
     }
@@ -176,25 +270,39 @@ const KycActionModal = ({ submission, mode, onClose, onDone }) => {
           )}
         </div>
 
-        {/* Mode switch (only when pending) */}
-        {submission.status === 'pending' && (
+        {/* Mode switch — Approve/Reject only while pending, Edit only once approved */}
+        {(submission.status === 'pending' || submission.status === 'approved') && (
           <div className="mb-4 flex gap-2">
-            <button
-              onClick={() => { setActive('approve'); setError(null); }}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition ${
-                active === 'approve' ? 'border-green-600 bg-green-50 text-green-700' : 'border-neutral-200 text-neutral-500 hover:border-neutral-400'
-              }`}
-            >
-              <Check size={14} /> Approve
-            </button>
-            <button
-              onClick={() => { setActive('reject'); setError(null); }}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition ${
-                active === 'reject' ? 'border-red-600 bg-red-50 text-red-700' : 'border-neutral-200 text-neutral-500 hover:border-neutral-400'
-              }`}
-            >
-              <Ban size={14} /> Reject
-            </button>
+            {submission.status === 'pending' && (
+              <>
+                <button
+                  onClick={() => { setActive('approve'); setError(null); }}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition ${
+                    active === 'approve' ? 'border-green-600 bg-green-50 text-green-700' : 'border-neutral-200 text-neutral-500 hover:border-neutral-400'
+                  }`}
+                >
+                  <Check size={14} /> Approve
+                </button>
+                <button
+                  onClick={() => { setActive('reject'); setError(null); }}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition ${
+                    active === 'reject' ? 'border-red-600 bg-red-50 text-red-700' : 'border-neutral-200 text-neutral-500 hover:border-neutral-400'
+                  }`}
+                >
+                  <Ban size={14} /> Reject
+                </button>
+              </>
+            )}
+            {submission.status === 'approved' && (
+              <button
+                onClick={() => { setEditForm(editFormFromSubmission(submission)); setEditFiles({ panImage: null, aadhaarFront: null, aadhaarBack: null }); setActive('edit'); setError(null); }}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition ${
+                  active === 'edit' ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 text-neutral-500 hover:border-neutral-400'
+                }`}
+              >
+                <Pencil size={14} /> Edit
+              </button>
+            )}
           </div>
         )}
 
@@ -238,7 +346,161 @@ const KycActionModal = ({ submission, mode, onClose, onDone }) => {
           </div>
         )}
 
-        {submission.status !== 'pending' && (
+        {active === 'edit' && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-neutral-100 px-4 py-4">
+              <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                <CreditCard size={13} /> PAN Details
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">PAN Number</label>
+                  <input
+                    value={editForm.panNumber}
+                    onChange={(e) => setField('panNumber', e.target.value.toUpperCase())}
+                    placeholder="ABCDE1234F"
+                    maxLength={10}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={editForm.dob}
+                    onChange={(e) => setField('dob', e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Name as per PAN</label>
+                  <input
+                    value={editForm.nameAsPerPan}
+                    onChange={(e) => setField('nameAsPerPan', e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+              </div>
+              <div className="mt-3">
+                <ImageEditPicker
+                  label="PAN Image"
+                  currentUrl={submission.pan?.imageUrl}
+                  file={editFiles.panImage}
+                  onChange={(f) => setEditFile('panImage', f)}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-neutral-100 px-4 py-4">
+              <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                <IdCard size={13} /> Aadhaar
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <ImageEditPicker
+                  label="Front"
+                  currentUrl={submission.aadhaar?.frontImageUrl}
+                  file={editFiles.aadhaarFront}
+                  onChange={(f) => setEditFile('aadhaarFront', f)}
+                />
+                <ImageEditPicker
+                  label="Back"
+                  currentUrl={submission.aadhaar?.backImageUrl}
+                  file={editFiles.aadhaarBack}
+                  onChange={(f) => setEditFile('aadhaarBack', f)}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-neutral-100 px-4 py-4">
+              <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                <Landmark size={13} /> Bank Details
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Account Holder</label>
+                  <input
+                    value={editForm.accountHolderName}
+                    onChange={(e) => setField('accountHolderName', e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Account Number</label>
+                  <input
+                    value={editForm.accountNumber}
+                    onChange={(e) => setField('accountNumber', e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Bank Name</label>
+                  <input
+                    value={editForm.bankName}
+                    onChange={(e) => setField('bankName', e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">IFSC Code</label>
+                  <input
+                    value={editForm.ifscCode}
+                    onChange={(e) => setField('ifscCode', e.target.value.toUpperCase())}
+                    placeholder="HDFC0001234"
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-neutral-100 px-4 py-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Status</label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setField('status', e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm capitalize outline-none focus:border-neutral-400"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Admin Note</label>
+                  <input
+                    value={editForm.adminNote}
+                    onChange={(e) => setField('adminNote', e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <p className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                <AlertCircle size={12} /> {error}
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={onClose}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium transition hover:bg-neutral-50">
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSubmit}
+                disabled={busy}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-900 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50"
+              >
+                {busy && <Loader2 size={13} className="animate-spin" />}
+                {busy ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {active === 'view' && (
           <div className="flex justify-end pt-1">
             <button onClick={onClose} className="rounded-xl border border-neutral-200 px-4 py-2 text-sm font-medium hover:bg-neutral-50">
               Close
@@ -339,26 +601,44 @@ const KycManagementSection = () => {
   const total = pagination.total;
 
   const STAT_CARDS = [
-    { label: 'Total Submissions', value: total,            Icon: IdCard,       cls: 'bg-neutral-900 text-white' },
-    { label: 'Pending',           value: summary.pending,  Icon: Clock,        cls: 'bg-amber-50 text-amber-800 border border-amber-200' },
-    { label: 'Approved',          value: summary.approved, Icon: CheckCircle2, cls: 'bg-green-50 text-green-800 border border-green-200' },
-    { label: 'Rejected',          value: summary.rejected, Icon: XCircle,      cls: 'bg-red-50 text-red-800 border border-red-200' },
+    { label: 'Total Submissions', value: total,            Icon: IdCard,       iconColor: 'text-neutral-900', barColor: 'bg-neutral-900' },
+    { label: 'Pending',           value: summary.pending,  Icon: Clock,        iconColor: 'text-amber-600',   barColor: 'bg-amber-500' },
+    { label: 'Approved',          value: summary.approved, Icon: CheckCircle2, iconColor: 'text-green-600',   barColor: 'bg-green-500' },
+    { label: 'Rejected',          value: summary.rejected, Icon: XCircle,      iconColor: 'text-red-600',     barColor: 'bg-red-500' },
   ];
+  const maxStat = Math.max(...STAT_CARDS.map((c) => c.value || 0), 1);
 
   return (
     <div className="space-y-4 sm:space-y-6">
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {STAT_CARDS.map(({ label, value, Icon, cls }) => (
-          <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${cls}`}>
-            <div className="flex items-start justify-between">
-              <p className="text-2xl font-black sm:text-3xl">{value}</p>
-              <Icon size={18} className="opacity-50" />
+        {STAT_CARDS.map(({ label, value, Icon, iconColor, barColor }) => {
+          const pct = Math.round(((value || 0) / maxStat) * 100);
+          const filledBars = Math.round((pct / 100) * BAR_COUNT);
+          return (
+            <div key={label} className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
+                <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 ${iconColor}`}>
+                  <Icon size={15} />
+                </div>
+              </div>
+              <div className="mt-2">
+                <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{value}</span>
+              </div>
+              <div className="mt-2.5 flex h-6 items-end gap-[3px] overflow-hidden">
+                {Array.from({ length: BAR_COUNT }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-[3px] flex-shrink-0 rounded-full ${i < filledBars ? barColor : 'bg-neutral-200'}`}
+                    style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
+                  />
+                ))}
+              </div>
             </div>
-            <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1 sm:text-sm">{label}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Main card */}
@@ -458,6 +738,14 @@ const KycManagementSection = () => {
                         >
                           View
                         </button>
+                        {s.status === 'approved' && (
+                          <button
+                            onClick={() => openModal(s, 'edit')}
+                            className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition hover:border-neutral-400 hover:bg-neutral-50"
+                          >
+                            Edit
+                          </button>
+                        )}
                         {s.status === 'pending' && (
                           <>
                             <button

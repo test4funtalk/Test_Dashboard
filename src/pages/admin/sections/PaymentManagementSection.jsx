@@ -29,10 +29,10 @@ const STATUS_STYLES = {
 };
 
 const STATUS_FILTERS = [
-  { value: '',          label: 'All'       },
   { value: 'success',   label: 'Success'   },
   { value: 'pending',   label: 'Pending'   },
   { value: 'failed',    label: 'Failed'    },
+  { value: 'all',       label: 'All'       },
   { value: 'refunded',  label: 'Refunded'  },
   { value: 'cancelled', label: 'Cancelled' },
 ];
@@ -141,17 +141,20 @@ const PaginationBar = ({ page, pages, total, limit, onPage }) => {
 const PaymentManagementSection = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const rawStatus   = searchParams.get('pstatus') || '';
-  const activeStatus = VALID_STATUSES.has(rawStatus) ? rawStatus : '';
+  const rawStatus   = searchParams.get('pstatus') || 'success';
+  const activeStatus = VALID_STATUSES.has(rawStatus) ? rawStatus : 'success';
 
   const setActiveStatus = useCallback((s) => {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
-      if (s) p.set('pstatus', s); else p.delete('pstatus');
+      p.set('pstatus', s);
       return p;
     }, { replace: true });
     setPage(1);
   }, [setSearchParams]);
+
+  // API expects '' for "no status filter" (All), while the URL/button state uses 'all'
+  const statusParam = activeStatus === 'all' ? '' : activeStatus;
 
   const [purchases,    setPurchases]    = useState([]);
   const [pagination,   setPagination]   = useState({ total: 0, page: 1, limit: 100, pages: 0 });
@@ -163,7 +166,7 @@ const PaymentManagementSection = () => {
   const [page,   setPage]   = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [period,     setPeriod]     = useState('all');
+  const [period,     setPeriod]     = useState('today');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo,   setCustomTo]   = useState('');
 
@@ -185,7 +188,7 @@ const PaymentManagementSection = () => {
         page: targetPage, limit: 100,
         ...getPeriodParams(period, customFrom, customTo),
       };
-      if (activeStatus)    params.status = activeStatus;
+      if (statusParam)     params.status = statusParam;
       if (debouncedSearch) params.userId  = debouncedSearch;
 
       const { data } = await api.get('/api/purchase/admin/all', { params });
@@ -205,7 +208,7 @@ const PaymentManagementSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeStatus, debouncedSearch, period, customFrom, customTo]);
+  }, [statusParam, debouncedSearch, period, customFrom, customTo]);
 
   // Paginate through ALL filtered records to compute accurate totals
   const fetchAggStats = useCallback(async () => {
@@ -215,7 +218,7 @@ const PaymentManagementSection = () => {
         limit: 100,
         ...getPeriodParams(period, customFrom, customTo),
       };
-      if (activeStatus)    baseParams.status = activeStatus;
+      if (statusParam)     baseParams.status = statusParam;
       if (debouncedSearch) baseParams.userId  = debouncedSearch;
 
       let curPage = 1;
@@ -251,7 +254,7 @@ const PaymentManagementSection = () => {
     } finally {
       setStatsLoading(false);
     }
-  }, [activeStatus, debouncedSearch, period, customFrom, customTo]);
+  }, [statusParam, debouncedSearch, period, customFrom, customTo]);
 
   useEffect(() => {
     fetchPurchases(page);
@@ -476,7 +479,7 @@ const PaymentManagementSection = () => {
                     <CreditCard size={36} className="mx-auto mb-3 text-neutral-200" />
                     <p className="text-sm font-medium text-neutral-400">No purchases found</p>
                     <p className="mt-1 text-xs text-neutral-300">
-                      {activeStatus || debouncedSearch
+                      {activeStatus !== 'success' || debouncedSearch
                         ? 'Try clearing the filters'
                         : 'Purchase records will appear here'}
                     </p>
@@ -583,7 +586,7 @@ const PaymentManagementSection = () => {
           <div className="border-t border-neutral-50 px-4 py-2 sm:px-5">
             <p className="text-xs text-neutral-300">
               {purchases.length} records on this page · {pagination.total} total
-              {activeStatus && ` · status: ${activeStatus}`}
+              {statusParam && ` · status: ${statusParam}`}
               {debouncedSearch && ` · user: ${debouncedSearch}`}
               {period !== 'all' && ` · ${PERIOD_FILTERS.find((p) => p.id === period)?.label ?? period}`}
             </p>
