@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  PhoneCall, Phone, Video, Search, RefreshCw, AlertCircle,
+  PhoneCall, Search, RefreshCw, AlertCircle,
   Loader2, ChevronLeft, ChevronRight, Coins, Gift,
   Settings, Plus, Pencil, Trash2, X, CheckCircle, Save, Wallet,
   TrendingUp, TrendingDown, PhoneOff, PhoneMissed, PhoneIncoming,
@@ -318,8 +318,8 @@ const CallsTab = () => {
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
-                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Type</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">End Reason</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
@@ -332,7 +332,6 @@ const CallsTab = () => {
               </thead>
               <tbody>
                 {calls.map((call, index) => {
-                  const TypeIcon = call.callType === 'video' ? Video : Phone;
                   return (
                     <tr
                       key={call._id}
@@ -360,16 +359,13 @@ const CallsTab = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                        <span className="flex items-center gap-1.5 text-xs text-neutral-600">
-                          <TypeIcon size={12} />
-                          <span className="capitalize">{call.callType}</span>
-                        </span>
-                      </td>
                       <td className="border border-neutral-200 px-4 py-3">
                         <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
                           {call.status}
                         </span>
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 max-w-[180px] truncate text-xs text-neutral-600" title={call.endReason || ''}>
+                        {call.endReason || <span className="text-neutral-300">—</span>}
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
                         {fmtDuration(call.duration)}

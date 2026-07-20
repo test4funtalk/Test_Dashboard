@@ -358,19 +358,19 @@ const OverviewSection = () => {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 
         {(() => {
-          const rawBalance  = (billing.totalCashEarned ?? 0) + allTimeRevenue;
+          const rawBalance  = allTimeRevenue;
           const rawIncoming = totals.revenue ?? 0;
           const rawOutgoing = totals.expense ?? 0;
           const rawNet      = totals.income ?? 0;
           const maxAbs = Math.max(Math.abs(rawBalance), Math.abs(rawIncoming), Math.abs(rawOutgoing), Math.abs(rawNet), 1);
 
-          const balanceStillLoading = (statsLoading && !platformStats) || (allTimeRevenueLoading && allTimeRevenue === 0);
+          const balanceStillLoading = allTimeRevenueLoading && allTimeRevenue === 0;
           const cards = [
             {
-              label: 'Total Balance',
+              label: 'Total Revenue',
               raw: rawBalance,
               value: balanceStillLoading ? '—' : fmtINR(rawBalance),
-              caption: 'All-time revenue',
+              caption: 'All-time payments received',
               Icon: IndianRupee,
               iconColor: 'text-black',
               trend: 'up',

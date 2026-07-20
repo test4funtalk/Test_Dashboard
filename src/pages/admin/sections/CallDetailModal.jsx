@@ -121,7 +121,12 @@ const CallDetailModal = ({ callId, onClose }) => {
               {call.endedBy && (
                 <span className="text-xs text-neutral-400">Ended by <span className="font-medium capitalize text-neutral-600">{call.endedBy}</span></span>
               )}
-              <span className="text-xs text-neutral-400">Reason: <span className="font-medium text-neutral-600">{call.endReason || '—'}</span></span>
+            </div>
+
+            {/* End reason — its own line so it stays readable even when long, instead of getting squeezed among the badge pills above */}
+            <div className="rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">End Reason</p>
+              <p className="mt-0.5 break-words text-sm font-medium text-neutral-800">{call.endReason || 'Not provided'}</p>
             </div>
 
             {/* Participants */}
