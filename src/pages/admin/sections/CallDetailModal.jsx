@@ -91,7 +91,7 @@ const CallDetailModal = ({ callId, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl border border-neutral-200 bg-white p-6 shadow-2xl sm:max-w-2xl sm:rounded-2xl">
+      <div className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl border border-neutral-200 bg-white p-6 shadow-2xl sm:max-w-4xl sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-bold">Call Details</h3>
           <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-neutral-100">
@@ -123,10 +123,31 @@ const CallDetailModal = ({ callId, onClose }) => {
               )}
             </div>
 
-            {/* End reason — its own line so it stays readable even when long, instead of getting squeezed among the badge pills above */}
+            {/* Reason — reason (server classification) and endReason (frontend free text) side by side, each grid cell in its own highlighted badge */}
             <div className="rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-2.5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">End Reason</p>
-              <p className="mt-0.5 break-words text-sm font-medium text-neutral-800">{call.endReason || 'Not provided'}</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Classification</p>
+                  {call.reason ? (
+                    <span className="text-xs font-semibold text-neutral-900">
+                      {call.reason}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-neutral-400">Not recorded</span>
+                  )}
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Frontend</p>
+                  {call.endReason ? (
+                    <span className="break-words text-xs font-semibold text-neutral-900">
+                      {call.endReason}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-neutral-400">Not provided</span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Participants */}

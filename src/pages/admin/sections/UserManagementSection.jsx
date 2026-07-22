@@ -69,6 +69,47 @@ const CALL_STATUS_STYLES = {
   pending:   'bg-amber-100 text-amber-700',
 };
 
+// Machine-readable `reason` (always set by the server) mapped to a friendly
+// label + color; the optional free-text `endReason` a client may additionally
+// supply is surfaced as a hover tooltip on the badge rather than its own column.
+const REASON_LABELS = {
+  user_ended:               'Ended by User',
+  host_ended:                'Ended by Host',
+  rejected_by_host:          'Rejected',
+  cancelled_by_user:         'Cancelled by User',
+  cancelled_by_host:         'Cancelled by Host',
+  no_answer:                 'No Answer',
+  insufficient_balance:      'Insufficient Balance',
+  participant_disconnected:  'Disconnected',
+  stale_call_recovered:      'Recovered (Stale)',
+  server_shutdown:           'Server Shutdown',
+};
+
+const REASON_STYLES = {
+  user_ended:               'bg-neutral-100 text-neutral-600',
+  host_ended:                'bg-neutral-100 text-neutral-600',
+  rejected_by_host:          'bg-red-100 text-red-600',
+  cancelled_by_user:         'bg-orange-100 text-orange-600',
+  cancelled_by_host:         'bg-orange-100 text-orange-600',
+  no_answer:                 'bg-amber-100 text-amber-700',
+  insufficient_balance:      'bg-red-100 text-red-600',
+  participant_disconnected:  'bg-amber-100 text-amber-700',
+  stale_call_recovered:      'bg-purple-100 text-purple-600',
+  server_shutdown:           'bg-blue-100 text-blue-600',
+};
+
+const ReasonBadge = ({ reason, endReason }) => {
+  if (!reason) return <span className="text-xs text-neutral-300">—</span>;
+  return (
+    <span
+      title={endReason || undefined}
+      className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${REASON_STYLES[reason] || 'bg-neutral-100 text-neutral-600'}`}
+    >
+      {REASON_LABELS[reason] || reason}
+    </span>
+  );
+};
+
 const SORT_OPTIONS = [
   { value: '-createdAt', label: 'Newest first' },
   { value: 'createdAt',  label: 'Oldest first' },
@@ -673,13 +714,14 @@ const CallHistoryCard = ({ userId, role }) => {
            HOST TABLE  –  /calls/earnings response shape
            ════════════════════════════════════════════ */
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[940px] border-collapse text-sm">
+          <table className="w-full min-w-[1080px] border-collapse text-sm">
             <thead>
               <tr className="bg-neutral-50">
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Type</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host Cash</th>
@@ -722,6 +764,9 @@ const CallHistoryCard = ({ userId, role }) => {
                         {call.status}
                       </span>
                     </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      <ReasonBadge reason={call.reason} endReason={call.endReason} />
+                    </td>
                     <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
                       {fmtDuration(call.duration)}
                     </td>
@@ -759,7 +804,7 @@ const CallHistoryCard = ({ userId, role }) => {
            USER TABLE  –  /calls response shape
            ═══════════════════════════════════════ */
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] border-collapse text-sm">
+          <table className="w-full min-w-[1220px] border-collapse text-sm">
             <thead>
               <tr className="bg-neutral-50">
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
@@ -767,6 +812,7 @@ const CallHistoryCard = ({ userId, role }) => {
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Type</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller Coins</th>
@@ -817,6 +863,9 @@ const CallHistoryCard = ({ userId, role }) => {
                       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
                         {call.status}
                       </span>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      <ReasonBadge reason={call.reason} endReason={call.endReason} />
                     </td>
                     <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
                       {fmtDuration(call.duration)}
