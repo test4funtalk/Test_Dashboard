@@ -6,6 +6,10 @@ import {
 } from 'lucide-react';
 import api from '../../../services/api';
 
+// deterministic bar-height pattern for the barcode-style mini chart on stat cards
+const BAR_HEIGHTS = [45, 90, 60, 100, 55, 80, 40, 95, 65, 85, 50, 75, 40, 100, 60, 90];
+const BAR_COUNT = 32;
+
 const getTagName  = (t) => t?.name ?? String(t);
 // Only the first character is capitalized — every other character, including
 // later words, is forced lowercase (not per-word Title Case).
@@ -143,22 +147,38 @@ const TagsTab = () => {
   return (
     <div className="space-y-4 sm:space-y-6">
 
-      {/* Stat card */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <div className="rounded-xl bg-neutral-900 p-3 text-white sm:rounded-2xl sm:p-4">
-          <div className="flex items-start justify-between">
-            <p className="text-2xl font-black sm:text-3xl">{total}</p>
-            <Tag size={17} className="opacity-50" />
-          </div>
-          <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1">Total Tags</p>
-        </div>
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:rounded-2xl sm:p-4">
-          <div className="flex items-start justify-between">
-            <p className="text-2xl font-black sm:text-3xl">{tags.length}</p>
-            <Search size={17} className="opacity-30" />
-          </div>
-          <p className="mt-0.5 text-xs font-medium text-neutral-500 sm:mt-1">Showing</p>
-        </div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        {[
+          { label: 'Total Tags', value: total,        Icon: Tag,    iconColor: 'text-neutral-900', barColor: 'bg-neutral-900' },
+          { label: 'Showing',    value: tags.length,   Icon: Search, iconColor: 'text-neutral-500', barColor: 'bg-neutral-400' },
+        ].map(({ label, value, Icon, iconColor, barColor }) => {
+          const maxStat = Math.max(total, tags.length, 1);
+          const pct = Math.round(((value || 0) / maxStat) * 100);
+          const filledBars = Math.round((pct / 100) * BAR_COUNT);
+          return (
+            <div key={label} className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
+                <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 ${iconColor}`}>
+                  <Icon size={15} />
+                </div>
+              </div>
+              <div className="mt-2">
+                <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{value}</span>
+              </div>
+              <div className="mt-2.5 flex h-6 items-end gap-[3px] overflow-hidden">
+                {Array.from({ length: BAR_COUNT }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-[3px] flex-shrink-0 rounded-full ${i < filledBars ? barColor : 'bg-neutral-200'}`}
+                    style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Main card */}

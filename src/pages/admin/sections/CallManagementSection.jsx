@@ -312,13 +312,15 @@ const CallsTab = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1320px] border-collapse text-sm">
+            <table className="w-full min-w-[1560px] border-collapse text-sm">
               <thead>
                 <tr className="bg-neutral-50">
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Ended By</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason (Frontend)</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
@@ -362,6 +364,25 @@ const CallsTab = () => {
                         <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
                           {call.status}
                         </span>
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3">
+                        {call.endedBy === 'user' ? (
+                          <span className="text-xs font-semibold capitalize text-green-600">User</span>
+                        ) : call.endedBy === 'host' ? (
+                          <span className="text-xs font-semibold capitalize text-red-600">Host</span>
+                        ) : call.endedBy === 'system' ? (
+                          <span className="text-xs font-semibold capitalize text-amber-600" title="Ended by system">
+                            {call.reason ? call.reason.replace(/_/g, ' ') : 'System'}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-neutral-300">—</span>
+                        )}
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 max-w-[180px]">
+                        {call.endReason
+                          ? <span className="truncate text-xs font-medium text-neutral-700" title={call.endReason}>{call.endReason}</span>
+                          : <span className="text-xs italic text-neutral-300">Not provided</span>
+                        }
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
                         {fmtDuration(call.duration)}

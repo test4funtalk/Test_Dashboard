@@ -13,6 +13,48 @@ import api from '../../../services/api';
 const fmtDateTime = (d) =>
   d ? new Date(d).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
+// deterministic bar-height pattern for the barcode-style mini chart on stat cards
+const BAR_HEIGHTS = [45, 90, 60, 100, 55, 80, 40, 95, 65, 85, 50, 75, 40, 100, 60, 90];
+const BAR_COUNT = 32;
+
+// Tailwind needs static class names to scan — can't interpolate `sm:grid-cols-${n}`
+const SM_GRID_COLS = { 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-5' };
+
+const StatCards = ({ cards }) => {
+  const maxStat = Math.max(...cards.map((c) => c.value || 0), 1);
+  return (
+    <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${SM_GRID_COLS[cards.length] || 'sm:grid-cols-4'}`}>
+      {cards.map(({ label, value, Icon, iconColor, barColor }) => {
+        const pct = Math.round(((value || 0) / maxStat) * 100);
+        const filledBars = Math.round((pct / 100) * BAR_COUNT);
+        return (
+          <div key={label} className="rounded-xl border border-neutral-200 bg-white p-3 sm:rounded-2xl sm:p-5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-xs font-medium text-neutral-700 sm:text-sm">{label}</span>
+              <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 sm:h-9 sm:w-9 sm:rounded-xl ${iconColor}`}>
+                <Icon size={14} className="sm:hidden" />
+                <Icon size={15} className="hidden sm:block" />
+              </div>
+            </div>
+            <div className="mt-1.5 sm:mt-2">
+              <span className="text-xl font-black text-neutral-900 sm:text-3xl">{value}</span>
+            </div>
+            <div className="mt-2 flex h-5 items-end gap-[3px] overflow-hidden sm:mt-2.5 sm:h-6">
+              {Array.from({ length: BAR_COUNT }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-[3px] flex-shrink-0 rounded-full ${i < filledBars ? barColor : 'bg-neutral-200'}`}
+                  style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const SECTION_TABS = [
   { id: 'ads',          label: 'Ads',                Icon: Megaphone },
   { id: 'notifications', label: 'Global Notification', Icon: Bell      },
@@ -991,29 +1033,19 @@ const GlobalNotificationsTab = () => {
   }, [resendSuccess]);
 
   const STAT_CARDS = [
-    { label: 'Total', value: roleStats.active + roleStats.inactive, Icon: Bell, cls: 'bg-neutral-900 text-white' },
+    { label: 'Total', value: roleStats.active + roleStats.inactive, Icon: Bell, iconColor: 'text-neutral-900', barColor: 'bg-neutral-900' },
     activeNotifTab === 'host'
-      ? { label: 'Host Notifications', value: roleStats.active + roleStats.inactive, Icon: Crown, cls: 'bg-amber-50 text-amber-800 border border-amber-200' }
-      : { label: 'User Notifications', value: roleStats.active + roleStats.inactive, Icon: Users, cls: 'bg-blue-50 text-blue-800 border border-blue-200' },
-    { label: 'Active',   value: roleStats.active,   Icon: PlayCircle,  cls: 'bg-green-50 text-green-800 border border-green-200' },
-    { label: 'Inactive', value: roleStats.inactive, Icon: PauseCircle, cls: 'bg-neutral-100 text-neutral-600 border border-neutral-200' },
+      ? { label: 'Host Notifications', value: roleStats.active + roleStats.inactive, Icon: Crown, iconColor: 'text-amber-600', barColor: 'bg-amber-500' }
+      : { label: 'User Notifications', value: roleStats.active + roleStats.inactive, Icon: Users, iconColor: 'text-blue-600', barColor: 'bg-blue-500' },
+    { label: 'Active',   value: roleStats.active,   Icon: PlayCircle,  iconColor: 'text-green-600', barColor: 'bg-green-500' },
+    { label: 'Inactive', value: roleStats.inactive, Icon: PauseCircle, iconColor: 'text-neutral-500', barColor: 'bg-neutral-400' },
   ];
 
   return (
     <div className="space-y-4 sm:space-y-6">
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {STAT_CARDS.map(({ label, value, Icon, cls }) => (
-          <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${cls}`}>
-            <div className="flex items-start justify-between">
-              <p className="text-2xl font-black sm:text-3xl">{value}</p>
-              <Icon size={18} className="opacity-50" />
-            </div>
-            <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1 sm:text-sm">{label}</p>
-          </div>
-        ))}
-      </div>
+      <StatCards cards={STAT_CARDS} />
 
       {/* Main card */}
       <div className="rounded-2xl border border-neutral-200 bg-white">
@@ -1316,9 +1348,17 @@ const AdsManagementSection = () => {
 
   const onPage = (n) => { setPage(n); fetchAds(n); };
 
-  const filteredRows = search.trim()
-    ? ads.filter((a) => a.title?.toLowerCase().includes(search.trim().toLowerCase()))
-    : ads;
+  const filteredRows = (() => {
+    const bySearch = search.trim()
+      ? ads.filter((a) => a.title?.toLowerCase().includes(search.trim().toLowerCase()))
+      : ads;
+    // User Ads tab: show active ads first, inactive ads after
+    if (activeAdTab !== 'user') return bySearch;
+    return [...bySearch].sort((a, b) => {
+      if (a.status === b.status) return 0;
+      return a.status === 'active' ? -1 : 1;
+    });
+  })();
 
   const handleCreated = () => {
     setShowCreate(false);
@@ -1349,11 +1389,11 @@ const AdsManagementSection = () => {
   };
 
   const STAT_CARDS = [
-    { label: 'Total Ads', value: pagination.total, Icon: Megaphone,   cls: 'bg-neutral-900 text-white' },
-    { label: 'Host Ads',  value: summary.hostAds,   Icon: Crown,       cls: 'bg-amber-50 text-amber-800 border border-amber-200' },
-    { label: 'User Ads',  value: summary.userAds,   Icon: Users,       cls: 'bg-blue-50 text-blue-800 border border-blue-200' },
-    { label: 'Active',    value: summary.active,    Icon: PlayCircle,  cls: 'bg-green-50 text-green-800 border border-green-200' },
-    { label: 'Inactive',  value: summary.inactive,  Icon: PauseCircle, cls: 'bg-neutral-100 text-neutral-600 border border-neutral-200' },
+    { label: 'Total Ads', value: pagination.total, Icon: Megaphone,   iconColor: 'text-neutral-900', barColor: 'bg-neutral-900' },
+    { label: 'Host Ads',  value: summary.hostAds,   Icon: Crown,       iconColor: 'text-amber-600',   barColor: 'bg-amber-500' },
+    { label: 'User Ads',  value: summary.userAds,   Icon: Users,       iconColor: 'text-blue-600',    barColor: 'bg-blue-500' },
+    { label: 'Active',    value: summary.active,    Icon: PlayCircle,  iconColor: 'text-green-600',   barColor: 'bg-green-500' },
+    { label: 'Inactive',  value: summary.inactive,  Icon: PauseCircle, iconColor: 'text-neutral-500', barColor: 'bg-neutral-400' },
   ];
 
   return (
@@ -1382,17 +1422,7 @@ const AdsManagementSection = () => {
       ) : (
       <>
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
-        {STAT_CARDS.map(({ label, value, Icon, cls }) => (
-          <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${cls}`}>
-            <div className="flex items-start justify-between">
-              <p className="text-2xl font-black sm:text-3xl">{value}</p>
-              <Icon size={18} className="opacity-50" />
-            </div>
-            <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1 sm:text-sm">{label}</p>
-          </div>
-        ))}
-      </div>
+      <StatCards cards={STAT_CARDS} />
 
       {/* Main card */}
       <div className="rounded-2xl border border-neutral-200 bg-white">

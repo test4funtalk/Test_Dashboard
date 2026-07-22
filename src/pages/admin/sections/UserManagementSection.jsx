@@ -2928,6 +2928,7 @@ const UserManagementSection = () => {
       return p;
     }, { replace: false });
     setPage(1);
+    setOnlineOnly(false);
   }, [setSearchParams]);
 
   const setSelectedId = useCallback((id) => {
@@ -2958,6 +2959,7 @@ const UserManagementSection = () => {
   const [debouncedSearch, setDs]    = useState('');
   const [sort, setSort]             = useState('-createdAt');
   const [page, setPage]             = useState(1);
+  const [onlineOnly, setOnlineOnly] = useState(false); // toggled by clicking the "Online Now" stat card
 
   // modals
   const [editTarget, setEditTarget]     = useState(null);
@@ -2991,11 +2993,31 @@ const UserManagementSection = () => {
       page, limit: 20, sort,
       role: activeTab === 'hosts' ? 'host' : 'user',
       ...(debouncedSearch && { search: debouncedSearch }),
+      ...(onlineOnly && { userCurrentStatus: 'online' }),
     };
     dispatch(fetchUsers(params));
-  }, [dispatch, page, sort, debouncedSearch, activeTab]);
+  }, [dispatch, page, sort, debouncedSearch, activeTab, onlineOnly]);
 
   useEffect(() => { doFetch(); }, [doFetch]);
+
+  // ── KYC-approved count for the Hosts tab stat card ──────────────────────
+  // `stats.verifiedHosts` (from the users API) only reflects the generic
+  // isVerified account flag, not actual KYC approval. The admin KYC list
+  // endpoint already computes a real `summary.approved` count server-side
+  // (only hosts ever submit KYC) — reused here as-is, no backend change.
+  const [hostKycApprovedCount, setHostKycApprovedCount] = useState(null);
+  const [hostKycLoading, setHostKycLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== 'hosts') return;
+    let cancelled = false;
+    setHostKycLoading(true);
+    api.get('/api/admin/kyc', { params: { limit: 1 } })
+      .then(({ data }) => { if (!cancelled) setHostKycApprovedCount(data?.summary?.approved ?? 0); })
+      .catch(() => { if (!cancelled) setHostKycApprovedCount(0); })
+      .finally(() => { if (!cancelled) setHostKycLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab]);
 
   // ── close edit on success ───────────────────────────────────────────────
   useEffect(() => {
@@ -3089,12 +3111,12 @@ const UserManagementSection = () => {
     { label: 'Total Users', value: displayStats.totalUsers,    total: usersTotal, icon: Users,      caption: 'All registered users', dot: 'bg-neutral-900' },
     { label: 'Active',      value: displayStats.activeUsers,   total: usersTotal, icon: UserCheck,  caption: 'Currently active',      dot: 'bg-green-500'   },
     { label: 'Verified',    value: displayStats.verifiedUsers, total: usersTotal, icon: ShieldCheck,caption: 'KYC verified',          dot: 'bg-blue-500'    },
-    { label: 'Online Now',  value: displayStats.onlineUsers,   total: usersTotal, icon: Wifi,       caption: 'Online right now',      dot: 'bg-emerald-500' },
+    { label: 'Online Now',  value: displayStats.onlineUsers,   total: usersTotal, icon: Wifi,       caption: 'Online right now',      dot: 'bg-emerald-500', filterKey: 'online' },
   ] : [
-    { label: 'Total Hosts', value: displayStats.totalHosts,    total: hostsTotal, icon: Crown,      caption: 'All registered hosts',  dot: 'bg-amber-500'   },
-    { label: 'Active',      value: displayStats.activeHosts,   total: hostsTotal, icon: UserCheck,  caption: 'Currently active',      dot: 'bg-green-500'   },
-    { label: 'Verified',    value: displayStats.verifiedHosts, total: hostsTotal, icon: ShieldCheck,caption: 'KYC verified',          dot: 'bg-blue-500'    },
-    { label: 'Online Now',  value: displayStats.onlineHosts,   total: hostsTotal, icon: Wifi,       caption: 'Online right now',      dot: 'bg-emerald-500' },
+    { label: 'Total Hosts', value: displayStats.totalHosts,    total: hostsTotal,  icon: Crown,      caption: 'All registered hosts',  dot: 'bg-amber-500'   },
+    { label: 'Active',      value: displayStats.activeHosts,   total: hostsTotal,  icon: UserCheck,  caption: 'Currently active',      dot: 'bg-green-500'   },
+    { label: 'Verified',    value: hostKycLoading ? 0 : (hostKycApprovedCount ?? 0), total: hostsTotal, icon: ShieldCheck, caption: 'KYC approved', dot: 'bg-blue-500' },
+    { label: 'Online Now',  value: displayStats.onlineHosts,   total: hostsTotal,  icon: Wifi,       caption: 'Online right now',      dot: 'bg-emerald-500', filterKey: 'online' },
   ];
 
   const COL_HEADERS = isUsersTab
@@ -3148,10 +3170,21 @@ const UserManagementSection = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {STAT_CARDS.map(({ label, value, total, icon: Icon, caption, dot }) => {
+        {STAT_CARDS.map(({ label, value, total, icon: Icon, caption, dot, filterKey }) => {
           const pct = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
+          const isOnlineCard = filterKey === 'online';
+          const isActive = isOnlineCard && onlineOnly;
+          const CardTag = isOnlineCard ? 'button' : 'div';
           return (
-            <div key={label} className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+            <CardTag
+              key={label}
+              type={isOnlineCard ? 'button' : undefined}
+              onClick={isOnlineCard ? () => { setOnlineOnly((v) => !v); setPage(1); } : undefined}
+              title={isOnlineCard ? (isActive ? 'Showing online only — click to clear' : 'Click to show only online') : undefined}
+              className={`rounded-2xl border bg-white p-4 text-left sm:p-5 ${
+                isOnlineCard ? 'cursor-pointer transition hover:border-neutral-400' : ''
+              } ${isActive ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-neutral-200'}`}
+            >
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-black">
@@ -3168,12 +3201,12 @@ const UserManagementSection = () => {
               </div>
 
               <div className="mt-3 flex items-center justify-between text-xs text-neutral-400">
-                <span className="truncate">{caption}</span>
+                <span className="truncate">{isActive ? 'Filtering: online only' : caption}</span>
                 <span className="flex-shrink-0 font-semibold text-neutral-500">{pct}% of total</span>
               </div>
 
               <StatSkylineBars pct={pct} />
-            </div>
+            </CardTag>
           );
         })}
       </div>

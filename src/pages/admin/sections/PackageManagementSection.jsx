@@ -9,7 +9,9 @@ import api from '../../../services/api';
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
-const EMPTY_FORM = { title: '', subtitle: '', coins: '', amount: '', currency: 'INR', isActive: true };
+const EMPTY_FORM = { title: '', subtitle: '', coins: '', amount: '', actualAmount: '', currency: 'INR', isActive: true, order: '' };
+
+const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
 
 // deterministic bar-height pattern for the barcode-style mini chart on stat cards
 const BAR_HEIGHTS = [45, 90, 60, 100, 55, 80, 40, 95, 65, 85, 50, 75, 40, 100, 60, 90];
@@ -20,76 +22,99 @@ const BAR_COUNT = 32;
 const PackageCard = ({ pkg, onEdit, onDelete }) => {
   const isPremium = pkg.isPremium || pkg.type === 'premium';
   const isActive  = pkg.isActive !== false;
+  const hasDiscount = pkg.actualAmount != null && pkg.amount != null && pkg.actualAmount > pkg.amount;
+  const discountPct = hasDiscount ? Math.round((1 - pkg.amount / pkg.actualAmount) * 100) : null;
 
   return (
-    <div className={`relative flex flex-col rounded-2xl border bg-white p-5 transition hover:shadow-sm ${
+    <div className={`flex min-h-[280px] flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
       isPremium ? 'border-amber-200' : 'border-neutral-200'
-    } ${!isActive ? 'opacity-60' : ''}`}>
+    } ${!isActive ? 'opacity-60 grayscale-[15%]' : ''}`}>
 
-      {isPremium && (
-        <span className="absolute right-12 top-3 flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-          <Star size={10} className="fill-amber-500" /> Premium
-        </span>
-      )}
-
-      {/* Action buttons */}
-      <div className="absolute right-3 top-3 flex items-center gap-1">
-        <button
-          onClick={() => onEdit(pkg)}
-          title="Edit"
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-900"
-        >
-          <Pencil size={12} />
-        </button>
-        <button
-          onClick={() => onDelete(pkg)}
-          title="Delete (deactivate)"
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-100 bg-white text-red-400 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-
-      {/* Icon + name */}
-      <div className="mb-3 mr-12 flex items-center gap-3">
-        <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${isPremium ? 'bg-amber-100' : 'bg-neutral-100'}`}>
-          <Package size={18} className={isPremium ? 'text-amber-600' : 'text-neutral-500'} />
+      {/* Header bar */}
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-100 bg-neutral-50/60 px-4 py-2.5">
+        <div className="flex items-center gap-1.5">
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-md bg-neutral-900 px-1.5 text-[10px] font-bold tabular-nums text-white">
+            #{pkg.order ?? '—'}
+          </span>
+          {isPremium && (
+            <span className="flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+              <Star size={9} className="fill-amber-500" /> Premium
+            </span>
+          )}
         </div>
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-neutral-900">{pkg.title || '—'}</p>
-          {pkg.subtitle && <p className="truncate text-xs text-neutral-400">{pkg.subtitle}</p>}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onEdit(pkg)}
+            title="Edit"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-white hover:text-neutral-900 hover:shadow-sm"
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            onClick={() => onDelete(pkg)}
+            title="Delete (deactivate)"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-red-50 hover:text-red-600 hover:shadow-sm"
+          >
+            <Trash2 size={13} />
+          </button>
         </div>
       </div>
 
-      {/* Coins + price */}
-      <div className="mb-3 flex items-center justify-between gap-2">
-        {pkg.coins != null && (
-          <div className="flex items-center gap-1.5 text-sm font-bold text-neutral-800">
-            <Coins size={15} className="text-amber-500" />
-            {pkg.coins} coins
+      {/* Body */}
+      <div className="flex flex-1 flex-col px-5 py-4">
+        {/* Icon + name */}
+        <div className="mb-4 flex items-center gap-3">
+          <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${isPremium ? 'bg-amber-100' : 'bg-neutral-100'}`}>
+            <Package size={20} className={isPremium ? 'text-amber-600' : 'text-neutral-500'} />
           </div>
-        )}
-        {pkg.amount != null && (
-          <p className="text-xl font-black text-neutral-900">
-            {pkg.currency || 'INR'} {pkg.amount}
-          </p>
-        )}
-      </div>
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-neutral-900">{pkg.title || '—'}</p>
+            {pkg.subtitle && <p className="truncate text-xs text-neutral-400">{pkg.subtitle}</p>}
+          </div>
+        </div>
 
-      {/* Active / inactive badge */}
-      <div className="mt-auto pt-3 border-t border-neutral-100">
-        {isActive ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Active
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" /> Inactive
-          </span>
-        )}
-        {pkg.createdAt && (
-          <span className="ml-2 text-xs text-neutral-300">Added {fmtDate(pkg.createdAt)}</span>
-        )}
+        {/* Price panel */}
+        <div className="mb-4 flex items-center justify-between gap-2 rounded-xl bg-neutral-50 px-4 py-3">
+          {pkg.coins != null && (
+            <div className="flex items-center gap-1.5 text-lg font-bold text-neutral-800">
+              <Coins size={19} className="text-amber-500" />
+              {Number(pkg.coins).toLocaleString()} coins
+            </div>
+          )}
+          <div className="text-right">
+            {hasDiscount && (
+              <div className="flex items-center justify-end gap-1.5">
+                <p className="text-base font-medium text-neutral-400 line-through">
+                  {pkg.currency || 'INR'} {pkg.actualAmount}
+                </p>
+                <span className="rounded bg-green-100 px-1 py-0.5 text-[9px] font-bold text-green-700">
+                  -{discountPct}%
+                </span>
+              </div>
+            )}
+            {pkg.amount != null && (
+              <p className="text-2xl font-black text-neutral-900">
+                {pkg.currency || 'INR'} {pkg.amount}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-auto flex items-center justify-between border-t border-neutral-100 pt-3">
+          {isActive ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Active
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" /> Inactive
+            </span>
+          )}
+          {pkg.createdAt && (
+            <span className="text-sm font-medium text-neutral-900">Added {fmtDate(pkg.createdAt)}</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -173,18 +198,46 @@ const PackageFormModal = ({ title, form, onChange, onSubmit, onClose, loading, e
           </div>
         </div>
 
-        {/* Currency */}
+        {/* Actual amount (display-only "was" price, struck-through on frontend) */}
         <div>
-          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Currency</label>
-          <select
-            value={form.currency}
-            onChange={(e) => onChange('currency', e.target.value)}
+          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">
+            Actual amount <span className="normal-case text-neutral-400">(MRP, optional — must be ≥ amount)</span>
+          </label>
+          <input
+            type="number"
+            min="1"
+            value={form.actualAmount}
+            onChange={(e) => onChange('actualAmount', e.target.value)}
+            placeholder="e.g. 79 (leave blank if no discount)"
             className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
-          >
-            {['INR', 'USD', 'EUR', 'GBP', 'AED'].map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          />
+        </div>
+
+        {/* Currency + Order */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Currency</label>
+            <select
+              value={form.currency}
+              onChange={(e) => onChange('currency', e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+            >
+              {['INR', 'USD', 'EUR', 'GBP', 'AED'].map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Display order</label>
+            <input
+              type="number"
+              min="1"
+              value={form.order}
+              onChange={(e) => onChange('order', e.target.value)}
+              placeholder="Auto"
+              className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400"
+            />
+          </div>
         </div>
 
         {/* isActive toggle (edit only) */}
@@ -267,7 +320,7 @@ const PackageManagementSection = () => {
         : Array.isArray(data?.data)
         ? data.data
         : data?.packages ?? data?.result ?? [];
-      setPackages(list);
+      setPackages([...list].sort(byOrder));
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load packages');
     } finally {
@@ -285,15 +338,17 @@ const PackageManagementSection = () => {
     setCreateError(null);
     try {
       const payload = {
-        title:    createForm.title.trim(),
-        subtitle: createForm.subtitle.trim() || undefined,
-        coins:    Number(createForm.coins),
-        amount:   Number(createForm.amount),
-        currency: createForm.currency || 'INR',
+        title:        createForm.title.trim(),
+        subtitle:     createForm.subtitle.trim() || undefined,
+        coins:        Number(createForm.coins),
+        amount:       Number(createForm.amount),
+        actualAmount: createForm.actualAmount !== '' ? Number(createForm.actualAmount) : undefined,
+        currency:     createForm.currency || 'INR',
+        order:        createForm.order !== '' ? Number(createForm.order) : undefined,
       };
       const { data } = await api.post('/api/packages/admin/createPackage', payload);
       const newPkg = data?.data ?? data?.package ?? null;
-      if (newPkg) setPackages((prev) => [newPkg, ...prev]);
+      if (newPkg) setPackages((prev) => [...prev, newPkg].sort(byOrder));
       else fetchPackages();
       setShowCreate(false);
       setCreateForm(EMPTY_FORM);
@@ -309,12 +364,14 @@ const PackageManagementSection = () => {
   const openEdit = (pkg) => {
     setEditTarget(pkg);
     setEditForm({
-      title:    pkg.title    ?? '',
-      subtitle: pkg.subtitle ?? '',
-      coins:    pkg.coins    ?? '',
-      amount:   pkg.amount   ?? '',
-      currency: pkg.currency ?? 'INR',
-      isActive: pkg.isActive !== false,
+      title:        pkg.title    ?? '',
+      subtitle:     pkg.subtitle ?? '',
+      coins:        pkg.coins    ?? '',
+      amount:       pkg.amount   ?? '',
+      actualAmount: pkg.actualAmount ?? '',
+      currency:     pkg.currency ?? 'INR',
+      isActive:     pkg.isActive !== false,
+      order:        pkg.order ?? '',
     });
     setEditError(null);
   };
@@ -325,16 +382,18 @@ const PackageManagementSection = () => {
     setEditError(null);
     try {
       const payload = {
-        title:    editForm.title.trim(),
-        subtitle: editForm.subtitle.trim() || undefined,
-        coins:    Number(editForm.coins),
-        amount:   Number(editForm.amount),
-        currency: editForm.currency || 'INR',
-        isActive: editForm.isActive,
+        title:        editForm.title.trim(),
+        subtitle:     editForm.subtitle.trim() || undefined,
+        coins:        Number(editForm.coins),
+        amount:       Number(editForm.amount),
+        actualAmount: editForm.actualAmount !== '' ? Number(editForm.actualAmount) : null,
+        currency:     editForm.currency || 'INR',
+        isActive:     editForm.isActive,
+        order:        editForm.order !== '' ? Number(editForm.order) : undefined,
       };
       const { data } = await api.put(`/api/packages/admin/updatePackage/${editTarget._id}`, payload);
       const updated = data?.data ?? data?.package ?? { ...editTarget, ...payload };
-      setPackages((prev) => prev.map((p) => (p._id === editTarget._id ? updated : p)));
+      setPackages((prev) => prev.map((p) => (p._id === editTarget._id ? updated : p)).sort(byOrder));
       setEditTarget(null);
     } catch (err) {
       setEditError(err.response?.data?.message || 'Failed to update package');
