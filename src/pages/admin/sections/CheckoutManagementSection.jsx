@@ -35,6 +35,11 @@ const STATUS_STYLES = {
   rejected: 'bg-red-100 text-red-700',
 };
 
+// deterministic bar-height pattern for the barcode-style mini chart on stat cards
+// (matches KYC Management / User Management's stat card styling)
+const BAR_HEIGHTS = [45, 90, 60, 100, 55, 80, 40, 95, 65, 85, 50, 75, 40, 100, 60, 90];
+const BAR_COUNT = 32;
+
 const STATUS_FILTERS = [
   { value: '',         label: 'All'      },
   { value: 'pending',  label: 'Pending'  },
@@ -1461,6 +1466,8 @@ const CheckoutManagementSection = () => {
   const [modalTarget, setModalTarget] = useState(null);
   const [modalMode, setModalMode]     = useState('view');
 
+  const [exporting, setExporting] = useState(false);
+
   const fetchCheckouts = useCallback(async (targetPage, targetStatus, targetPeriod) => {
     setLoading(true);
     setError(null);
@@ -1501,6 +1508,33 @@ const CheckoutManagementSection = () => {
   const onPage          = (n) => { setPage(n); fetchCheckouts(n, status, period); };
   const refreshAll      = () => { fetchCheckouts(page, status, period); fetchCounts(); };
 
+  // Bank bulk-upload sheet for pending checkout requests — always pending,
+  // regardless of whatever status tab the table is currently filtered to.
+  const downloadPendingExcel = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const res = await api.get('/api/admin/checkouts/export', {
+        params: { status: 'pending' },
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pending-checkouts-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to download Excel sheet');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const filteredRows = search.trim()
     ? requests.filter((r) => {
         const host  = r.hostId;
@@ -1527,11 +1561,12 @@ const CheckoutManagementSection = () => {
   };
 
   const STAT_CARDS = [
-    { label: 'Total Requests', value: counts.all,      Icon: Receipt,  cls: 'bg-neutral-900 text-white' },
-    { label: 'Pending',        value: counts.pending,  Icon: Banknote, cls: 'bg-amber-50 text-amber-800 border border-amber-200' },
-    { label: 'Approved',       value: counts.approved, Icon: Check,    cls: 'bg-green-50 text-green-800 border border-green-200' },
-    { label: 'Rejected',       value: counts.rejected, Icon: Ban,      cls: 'bg-red-50 text-red-800 border border-red-200' },
+    { label: 'Total Requests', value: counts.all,      Icon: Receipt,  iconColor: 'text-neutral-900', barColor: 'bg-neutral-900' },
+    { label: 'Pending',        value: counts.pending,  Icon: Banknote, iconColor: 'text-amber-600',   barColor: 'bg-amber-500' },
+    { label: 'Approved',       value: counts.approved, Icon: Check,    iconColor: 'text-green-600',   barColor: 'bg-green-500' },
+    { label: 'Rejected',       value: counts.rejected, Icon: Ban,      iconColor: 'text-red-600',     barColor: 'bg-red-500' },
   ];
+  const maxStat = Math.max(...STAT_CARDS.map((c) => c.value || 0), 1);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -1558,15 +1593,32 @@ const CheckoutManagementSection = () => {
         <>
           {/* Stats */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-            {STAT_CARDS.map(({ label, value, Icon, cls }) => (
-              <div key={label} className={`rounded-xl p-3 sm:rounded-2xl sm:p-5 ${cls}`}>
-                <div className="flex items-start justify-between">
-                  <p className="text-2xl font-black sm:text-3xl">{value}</p>
-                  <Icon size={18} className="opacity-50" />
+            {STAT_CARDS.map(({ label, value, Icon, iconColor, barColor }) => {
+              const pct = Math.round(((value || 0) / maxStat) * 100);
+              const filledBars = Math.round((pct / 100) * BAR_COUNT);
+              return (
+                <div key={label} className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium text-neutral-700">{label}</span>
+                    <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-neutral-100 ${iconColor}`}>
+                      <Icon size={15} />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <span className="text-2xl font-bold text-neutral-900 sm:text-3xl">{value}</span>
+                  </div>
+                  <div className="mt-2.5 flex h-6 items-end gap-[3px] overflow-hidden">
+                    {Array.from({ length: BAR_COUNT }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={`w-[3px] flex-shrink-0 rounded-full ${i < filledBars ? barColor : 'bg-neutral-200'}`}
+                        style={{ height: `${BAR_HEIGHTS[i % BAR_HEIGHTS.length]}%` }}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <p className="mt-0.5 text-xs font-medium opacity-70 sm:mt-1 sm:text-sm">{label}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Main card */}
@@ -1610,6 +1662,15 @@ const CheckoutManagementSection = () => {
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-40"
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={downloadPendingExcel}
+              disabled={exporting}
+              title="Download pending requests as Excel"
+              className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+            >
+              {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              Export Pending
             </button>
           </div>
         </div>

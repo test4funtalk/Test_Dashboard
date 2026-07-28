@@ -319,7 +319,6 @@ const CallsTab = () => {
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
-                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Ended By</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason (Frontend)</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
@@ -344,19 +343,31 @@ const CallsTab = () => {
                       </td>
                       <td className="border border-neutral-200 px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <AvatarDisplay src={call.callerId?.avatar} name={call.callerId?.username} size="sm" />
+                          <AvatarDisplay src={call.callerId?.avatar || call.callerAvatar} name={call.callerId?.username || call.callerUsername} size="sm" />
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-neutral-900">{call.callerId?.username || '—'}</p>
-                            {call.callerId?.phone && <p className="truncate text-xs text-neutral-400">{call.callerId.phone}</p>}
+                            <p
+                              className={`truncate font-medium ${call.status === 'ended' && (call.endedBy === 'user' || call.endedBy === 'system') ? 'text-red-600' : 'text-neutral-900'}`}
+                              title={call.status === 'ended' && call.endedBy === 'user' ? 'Ended by user' : call.status === 'ended' && call.endedBy === 'system' ? 'Ended by system' : undefined}
+                            >
+                              {call.callerId?.username || call.callerUsername || '—'}
+                              {!call.callerId && call.callerUsername && <span className="ml-1 text-[10px] italic text-neutral-300">(deleted)</span>}
+                            </p>
+                            {(call.callerId?.phone || call.callerPhone) && <p className="truncate text-xs text-neutral-400">{call.callerId?.phone || call.callerPhone}</p>}
                           </div>
                         </div>
                       </td>
                       <td className="border border-neutral-200 px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <AvatarDisplay src={call.hostId?.avatar} name={call.hostId?.username} size="sm" />
+                          <AvatarDisplay src={call.hostId?.avatar || call.hostAvatar} name={call.hostId?.username || call.hostUsername} size="sm" />
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-neutral-900">{call.hostId?.username || '—'}</p>
-                            {call.hostId?.phone && <p className="truncate text-xs text-neutral-400">{call.hostId.phone}</p>}
+                            <p
+                              className={`truncate font-medium ${call.status === 'ended' && (call.endedBy === 'host' || call.endedBy === 'system') ? 'text-red-600' : 'text-neutral-900'}`}
+                              title={call.status === 'ended' && call.endedBy === 'host' ? 'Ended by host' : call.status === 'ended' && call.endedBy === 'system' ? 'Ended by system' : undefined}
+                            >
+                              {call.hostId?.username || call.hostUsername || '—'}
+                              {!call.hostId && call.hostUsername && <span className="ml-1 text-[10px] italic text-neutral-300">(deleted)</span>}
+                            </p>
+                            {(call.hostId?.phone || call.hostPhone) && <p className="truncate text-xs text-neutral-400">{call.hostId?.phone || call.hostPhone}</p>}
                           </div>
                         </div>
                       </td>
@@ -364,19 +375,6 @@ const CallsTab = () => {
                         <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
                           {call.status}
                         </span>
-                      </td>
-                      <td className="border border-neutral-200 px-4 py-3">
-                        {call.endedBy === 'user' ? (
-                          <span className="text-xs font-semibold capitalize text-green-600">User</span>
-                        ) : call.endedBy === 'host' ? (
-                          <span className="text-xs font-semibold capitalize text-red-600">Host</span>
-                        ) : call.endedBy === 'system' ? (
-                          <span className="text-xs font-semibold capitalize text-amber-600" title="Ended by system">
-                            {call.reason ? call.reason.replace(/_/g, ' ') : 'System'}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-neutral-300">—</span>
-                        )}
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 max-w-[180px]">
                         {call.endReason

@@ -118,6 +118,13 @@ const SORT_OPTIONS = [
   { value: '-lastSeen',  label: 'Last active'  },
 ];
 
+const STATUS_OPTIONS = [
+  { value: '',          label: 'All status' },
+  { value: 'active',    label: 'Active'    },
+  { value: 'blocked',   label: 'Blocked'   },
+  { value: 'suspended', label: 'Suspended' },
+];
+
 // ─── status / role badges ─────────────────────────────────────────────────────
 
 const StatusBadge = ({ status }) => (
@@ -837,19 +844,19 @@ const CallHistoryCard = ({ userId, role }) => {
                     </td>
                     <td className="border border-neutral-200 px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <AvatarDisplay src={call.callerId?.avatar} name={call.callerId?.username} size="sm" />
+                        <AvatarDisplay src={call.callerId?.avatar || call.callerAvatar} name={call.callerId?.username || call.callerUsername} size="sm" />
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-neutral-900">{call.callerId?.username || '—'}</p>
-                          {call.callerId?.phone && <p className="truncate text-xs text-neutral-400">{call.callerId.phone}</p>}
+                          <p className="truncate font-medium text-neutral-900">{call.callerId?.username || call.callerUsername || '—'}</p>
+                          {(call.callerId?.phone || call.callerPhone) && <p className="truncate text-xs text-neutral-400">{call.callerId?.phone || call.callerPhone}</p>}
                         </div>
                       </div>
                     </td>
                     <td className="border border-neutral-200 px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <AvatarDisplay src={call.hostId?.avatar} name={call.hostId?.username} size="sm" />
+                        <AvatarDisplay src={call.hostId?.avatar || call.hostAvatar} name={call.hostId?.username || call.hostUsername} size="sm" />
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-neutral-900">{call.hostId?.username || '—'}</p>
-                          {call.hostId?.phone && <p className="truncate text-xs text-neutral-400">{call.hostId.phone}</p>}
+                          <p className="truncate font-medium text-neutral-900">{call.hostId?.username || call.hostUsername || '—'}</p>
+                          {(call.hostId?.phone || call.hostPhone) && <p className="truncate text-xs text-neutral-400">{call.hostId?.phone || call.hostPhone}</p>}
                         </div>
                       </div>
                     </td>
@@ -2958,6 +2965,7 @@ const UserManagementSection = () => {
   const [search, setSearch]         = useState('');
   const [debouncedSearch, setDs]    = useState('');
   const [sort, setSort]             = useState('-createdAt');
+  const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage]             = useState(1);
   const [onlineOnly, setOnlineOnly] = useState(false); // toggled by clicking the "Online Now" stat card
 
@@ -2990,13 +2998,14 @@ const UserManagementSection = () => {
   // ── fetch on filter change (role-scoped so each tab gets its own page) ──
   const doFetch = useCallback(() => {
     const params = {
-      page, limit: 20, sort,
+      page, limit: 100, sort,
       role: activeTab === 'hosts' ? 'host' : 'user',
       ...(debouncedSearch && { search: debouncedSearch }),
+      ...(statusFilter && { status: statusFilter }),
       ...(onlineOnly && { userCurrentStatus: 'online' }),
     };
     dispatch(fetchUsers(params));
-  }, [dispatch, page, sort, debouncedSearch, activeTab, onlineOnly]);
+  }, [dispatch, page, sort, debouncedSearch, activeTab, statusFilter, onlineOnly]);
 
   useEffect(() => { doFetch(); }, [doFetch]);
 
@@ -3243,7 +3252,7 @@ const UserManagementSection = () => {
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
-              placeholder="Search username or phone…"
+              placeholder="Search username, phone, or ID…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
@@ -3257,6 +3266,13 @@ const UserManagementSection = () => {
                 className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
               >
                 {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              >
+                {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
               <button
                 onClick={doFetch}

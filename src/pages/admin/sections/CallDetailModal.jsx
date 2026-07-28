@@ -51,13 +51,16 @@ const StatTile = ({ icon: Icon, label, value }) => (
   </div>
 );
 
-const ParticipantCard = ({ role, person }) => (
+const ParticipantCard = ({ role, person, fallback }) => (
   <div className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3">
-    <AvatarDisplay src={person?.avatar} name={person?.username} size="sm" />
+    <AvatarDisplay src={person?.avatar || fallback?.avatar} name={person?.username || fallback?.username} size="sm" />
     <div className="min-w-0">
       <p className="text-xs font-medium uppercase tracking-wider text-neutral-400">{role}</p>
-      <p className="truncate text-sm font-semibold">{person?.username || '—'}</p>
-      {person?.phone && <p className="truncate text-xs text-neutral-400">{person.phone}</p>}
+      <p className="truncate text-sm font-semibold">
+        {person?.username || fallback?.username || '—'}
+        {!person && fallback?.username && <span className="ml-1 text-[10px] font-normal italic text-neutral-300">(deleted)</span>}
+      </p>
+      {(person?.phone || fallback?.phone) && <p className="truncate text-xs text-neutral-400">{person?.phone || fallback.phone}</p>}
     </div>
   </div>
 );
@@ -152,8 +155,8 @@ const CallDetailModal = ({ callId, onClose }) => {
 
             {/* Participants */}
             <div className="grid gap-3 sm:grid-cols-2">
-              <ParticipantCard role="Caller" person={call.callerId} />
-              <ParticipantCard role="Host"   person={call.hostId} />
+              <ParticipantCard role="Caller" person={call.callerId} fallback={{ username: call.callerUsername, phone: call.callerPhone, avatar: call.callerAvatar }} />
+              <ParticipantCard role="Host"   person={call.hostId}   fallback={{ username: call.hostUsername,   phone: call.hostPhone,   avatar: call.hostAvatar }} />
             </div>
 
             {/* Stat tiles */}
