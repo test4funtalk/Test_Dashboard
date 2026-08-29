@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
   Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy,
-  AlertTriangle, Smartphone,
+  AlertTriangle, Smartphone, MessageCircle,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
@@ -19,6 +19,7 @@ import PaymentManagementSection from './sections/PaymentManagementSection';
 import PackageManagementSection from './sections/PackageManagementSection';
 import AdsManagementSection from './sections/AdsManagementSection';
 import CallManagementSection from './sections/CallManagementSection';
+import ChatManagementSection from './sections/ChatManagementSection';
 import KycManagementSection from './sections/KycManagementSection';
 import CheckoutManagementSection from './sections/CheckoutManagementSection';
 import ProfileManagementSection from './sections/ProfileManagementSection';
@@ -31,6 +32,7 @@ const NAV = [
   { id: 'overview',    label: 'Overview',            Icon: LayoutDashboard },
   { id: 'leaderboard', label: 'Leaderboard',          Icon: Trophy          },
   { id: 'calls',     label: 'Call Management',      Icon: PhoneCall       },
+  { id: 'chat',      label: 'Chat Management',      Icon: MessageCircle   },
   { id: 'users',     label: 'User Management',      Icon: Users           },
   { id: 'payments',  label: 'Payment Management',   Icon: CreditCard      },
   { id: 'checkouts', label: 'Checkout Management',  Icon: Banknote        },
@@ -46,6 +48,7 @@ const PAGE_META = {
   overview:    { title: 'Overview',            sub: 'Your profile and account details'           },
   leaderboard: { title: 'Leaderboard',         sub: 'Platform earnings and top earning hosts'    },
   calls:     { title: 'Call Management',     sub: 'Browse and inspect all platform calls'      },
+  chat:      { title: 'Chat Management',     sub: 'Chat billing config, message ledger and host earnings' },
   users:     { title: 'User Management',     sub: 'View and manage platform users'             },
   admins:    { title: 'Admin Management',    sub: 'Create, view and manage admin accounts'     },
   payments:  { title: 'Payment Management',  sub: 'Track transactions and revenue'             },
@@ -61,6 +64,7 @@ const SECTION_MAP = {
   overview:    OverviewSection,
   leaderboard: LeaderboardSection,
   calls:     CallManagementSection,
+  chat:      ChatManagementSection,
   users:     UserManagementSection,
   payments:  PaymentManagementSection,
   checkouts: CheckoutManagementSection,

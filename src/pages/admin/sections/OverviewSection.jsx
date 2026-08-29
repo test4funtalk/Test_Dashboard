@@ -540,6 +540,7 @@ const OverviewSection = () => {
               { label: 'Total Calls',    raw: calls.total   ?? 0, color: '#171717' },
               { label: 'Active Now',     raw: calls.active  ?? 0, color: '#525252' },
               { label: 'Total Gifts',    raw: gifts.total   ?? 0, color: '#8a8a8a' },
+              { label: 'Chat Messages',  raw: platformStats?.totalChatMessages ?? 0, color: '#737373' },
               { label: 'Total Ratings',  raw: ratings.total ?? 0, color: '#a3a3a3' },
               { label: 'Coins Deducted', raw: billing.totalCoinsDeducted ?? 0, color: '#404040' },
             ];
