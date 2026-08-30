@@ -163,7 +163,7 @@ const ChatConversationDetail = ({ userId, hostId, userInfo, hostInfo, onClose })
                     <div
                       className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
                         isUser
-                          ? 'rounded-br-sm bg-neutral-900 text-white'
+                          ? 'rounded-br-sm bg-black text-white'
                           : 'rounded-bl-sm bg-neutral-200 text-neutral-900'
                       }`}
                     >
@@ -177,8 +177,13 @@ const ChatConversationDetail = ({ userId, hostId, userInfo, hostInfo, onClose })
 
                       <div className={`mt-1 flex items-center gap-1.5 text-[10px] ${isUser ? 'justify-end text-neutral-300' : 'justify-start text-neutral-500'}`}>
                         {m.coinsCost > 0 && (
-                          <span className="flex items-center gap-0.5">
+                          <span className="flex items-center gap-0.5 font-semibold text-[gold]">
                             <Coins size={9} /> {m.coinsCost}
+                          </span>
+                        )}
+                        {m.cashEarned > 0 && (
+                          <span className="flex items-center gap-0.5 font-semibold text-green-600">
+                            <span className="font-bold">₹</span>{m.cashEarned}
                           </span>
                         )}
                         {m.deletedAt && (
