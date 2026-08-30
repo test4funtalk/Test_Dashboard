@@ -3,9 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import {
   MessageCircle, Search, RefreshCw, AlertCircle, Loader2,
   ChevronLeft, ChevronRight, Coins, Settings, CheckCircle,
-  Save, Wallet, TrendingUp, Ban,
+  Save, Wallet, TrendingUp, Ban, Users,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
+import ChatConversationDetail from './ChatConversationDetail';
 import api from '../../../services/api';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -38,8 +39,9 @@ const KIND_OPTIONS = [
 ];
 
 const SECTION_TABS = [
-  { id: 'messages', label: 'Messages',    Icon: MessageCircle },
-  { id: 'config',   label: 'Chat Config', Icon: Settings      },
+  { id: 'conversations', label: 'Conversations', Icon: Users         },
+  { id: 'messages',      label: 'All Messages',  Icon: MessageCircle },
+  { id: 'config',        label: 'Chat Config',   Icon: Settings      },
 ];
 
 const OBJECT_ID_RE = /^[0-9a-f]{24}$/i;
@@ -75,6 +77,265 @@ const KpiCard = ({ label, value, pct, Icon, trend, iconClass = 'bg-neutral-100 t
           />
         ))}
       </div>
+    </div>
+  );
+};
+
+// ─── conversations (grouped by host<->user pair) tab ──────────────────────────
+
+const ChatConversationsTab = () => {
+  const [items, setItems]     = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+
+  const [hostId, setHostId]   = useState('');
+  const [userId, setUserId]   = useState('');
+  const [search, setSearch]   = useState('');
+
+  const [page, setPage]   = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const [selected, setSelected] = useState(null); // { userId, hostId, userInfo, hostInfo }
+
+  const fetchConversations = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/api/admin/chat-conversations', {
+        params: {
+          page, limit: 20,
+          ...(hostId.trim() && { hostId: hostId.trim() }),
+          ...(userId.trim() && { userId: userId.trim() }),
+          ...(search.trim() && { search: search.trim() }),
+        },
+      });
+      const result = data?.data ?? {};
+      setItems(Array.isArray(result.items) ? result.items : []);
+      setTotal(result.total ?? 0);
+      setPages(Math.max(1, Math.ceil((result.total ?? 0) / (result.limit || 20))));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load conversations');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, hostId, userId, search]);
+
+  useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  const onFilterChange = (setter) => (e) => { setter(e.target.value); setPage(1); };
+
+  const clearFilters = () => { setHostId(''); setUserId(''); setSearch(''); setPage(1); };
+
+  const hasFilters = hostId || userId || search;
+
+  const pageNumbers = () => {
+    if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
+    if (page <= 3) return [1, 2, 3, 4, 5];
+    if (page >= pages - 2) return [pages - 4, pages - 3, pages - 2, pages - 1, pages];
+    return [page - 2, page - 1, page, page + 1, page + 2];
+  };
+
+  const openThread = (row) => {
+    setSelected({
+      userId: row.userId,
+      hostId: row.hostId,
+      userInfo: { username: row.userUsername, avatar: row.userAvatar, phone: row.userPhone },
+      hostInfo: { username: row.hostUsername, avatar: row.hostAvatar, phone: row.hostPhone },
+    });
+  };
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="rounded-2xl border border-neutral-200 bg-white">
+
+        {/* Toolbar */}
+        <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="text"
+                placeholder="Search username / phone…"
+                value={search}
+                onChange={onFilterChange(setSearch)}
+                className="w-52 rounded-xl border border-neutral-200 py-2 pl-8 pr-3 text-xs outline-none focus:border-neutral-400"
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="Host ID…"
+              value={hostId}
+              onChange={onFilterChange(setHostId)}
+              className="w-44 rounded-xl border border-neutral-200 px-3 py-2 text-xs outline-none focus:border-neutral-400"
+            />
+            <input
+              type="text"
+              placeholder="User ID…"
+              value={userId}
+              onChange={onFilterChange(setUserId)}
+              className="w-44 rounded-xl border border-neutral-200 px-3 py-2 text-xs outline-none focus:border-neutral-400"
+            />
+            {hasFilters && (
+              <button onClick={clearFilters} className="text-xs text-neutral-400 hover:text-neutral-700 underline">
+                Clear filters
+              </button>
+            )}
+            <button
+              onClick={fetchConversations}
+              className="ml-auto flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 border-b border-neutral-100 bg-red-50 px-6 py-3 text-sm text-red-600">
+            <AlertCircle size={15} /> {error}
+          </div>
+        )}
+
+        {/* Table — one row per host<->user pair, click to open the full thread */}
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+            <Loader2 size={20} className="animate-spin" /> Loading conversations…
+          </div>
+        ) : items.length === 0 ? (
+          <div className="py-16 text-center">
+            <Users size={36} className="mx-auto mb-3 text-neutral-200" />
+            <p className="text-sm font-medium text-neutral-400">
+              {hasFilters ? 'No conversations match your filters' : 'No chat conversations yet'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1080px] border-collapse text-sm">
+              <thead>
+                <tr className="bg-neutral-50">
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">User</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Last Message</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Messages</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Last Activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((row, index) => {
+                  const gift = row.lastMessageKind === 'gift' ? parseGiftText(row.lastMessageText) : null;
+                  const rowKey = `${row.userId}_${row.hostId}`;
+                  return (
+                    <tr
+                      key={rowKey}
+                      onClick={() => openThread(row)}
+                      className="cursor-pointer hover:bg-neutral-50"
+                      title="Open full conversation"
+                    >
+                      <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
+                        {(page - 1) * 20 + index + 1}
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <AvatarDisplay src={row.userAvatar} name={row.userUsername} size="sm" />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-neutral-900">{row.userUsername || '(deleted)'}</p>
+                            {row.userPhone && <p className="truncate text-xs text-neutral-400">{row.userPhone}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <AvatarDisplay src={row.hostAvatar} name={row.hostUsername} size="sm" />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-neutral-900">{row.hostUsername || '(deleted)'}</p>
+                            {row.hostPhone && <p className="truncate text-xs text-neutral-400">{row.hostPhone}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 max-w-[240px]">
+                        {gift ? (
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-pink-700">
+                            <span className="text-base">{gift.icon}</span> {gift.name}
+                          </span>
+                        ) : (
+                          <span className="truncate text-xs text-neutral-700" title={row.lastMessageText}>
+                            {row.lastMessageText || '—'}
+                          </span>
+                        )}
+                        {row.lastMessageDeleted && (
+                          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-500">
+                            <Ban size={9} /> deleted
+                          </span>
+                        )}
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap text-xs font-semibold text-neutral-700">
+                        {fmtNum(row.messageCount)}
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {row.totalCoins
+                          ? <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{row.totalCoins}</span>
+                          : <span className="text-xs text-neutral-300">—</span>
+                        }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {row.totalCash
+                          ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{row.totalCash}</span>
+                          : <span className="text-xs text-neutral-300">—</span>
+                        }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
+                        {fmtDateTime(row.lastMessageAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!loading && items.length > 0 && pages > 1 && (
+          <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 sm:px-6">
+            <p className="text-xs text-neutral-400">{total} total · page {page} of {pages}</p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronLeft size={14} />
+              </button>
+              {pageNumbers().map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setPage(n)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium transition ${
+                    n === page
+                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                      : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+              <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {selected && (
+        <ChatConversationDetail
+          userId={selected.userId}
+          hostId={selected.hostId}
+          userInfo={selected.userInfo}
+          hostInfo={selected.hostInfo}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 };
@@ -604,19 +865,19 @@ const ChatConfigTab = () => {
 
 // ─── main section ─────────────────────────────────────────────────────────────
 
-const VALID_CTABS = new Set(['messages', 'config']);
+const VALID_CTABS = new Set(['conversations', 'messages', 'config']);
 
 // A distinct search-param key from CallManagementSection's own `ctab` — reusing
 // that key would leak whichever call sub-tab was last open (e.g. ?ctab=config)
 // into this section's initial tab when an admin switches between the two.
 const ChatManagementSection = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = VALID_CTABS.has(searchParams.get('chatTab')) ? searchParams.get('chatTab') : 'messages';
+  const activeTab = VALID_CTABS.has(searchParams.get('chatTab')) ? searchParams.get('chatTab') : 'conversations';
 
   const setActiveTab = (id) => {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
-      if (id === 'messages') p.delete('chatTab'); else p.set('chatTab', id);
+      if (id === 'conversations') p.delete('chatTab'); else p.set('chatTab', id);
       return p;
     }, { replace: true });
   };
@@ -642,8 +903,9 @@ const ChatManagementSection = () => {
         ))}
       </div>
 
-      {activeTab === 'messages' && <ChatMessagesTab />}
-      {activeTab === 'config'   && <ChatConfigTab />}
+      {activeTab === 'conversations' && <ChatConversationsTab />}
+      {activeTab === 'messages'      && <ChatMessagesTab />}
+      {activeTab === 'config'        && <ChatConfigTab />}
     </div>
   );
 };
