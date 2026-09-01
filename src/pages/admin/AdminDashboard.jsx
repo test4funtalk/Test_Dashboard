@@ -43,7 +43,7 @@ const NAV = [
   { id: 'ads',       label: 'Ads Management',       Icon: Megaphone       },
   { id: 'profile',   label: 'Profile Management',   Icon: Languages       },
   { id: 'admins',    label: 'Admin Management',     Icon: Shield          },
-  { id: 'billing',   label: 'Billing',              Icon: Cloud           },
+  { id: 'billing',   label: 'Billing and Usage',    Icon: Cloud           },
   { id: 'settings',  label: 'Settings',             Icon: Settings        },
 ];
 
@@ -60,7 +60,7 @@ const PAGE_META = {
   ads:       { title: 'Ads Management',      sub: 'Monitor and control ad campaigns'           },
   kyc:       { title: 'KYC Management',      sub: 'Review and approve host identity submissions' },
   profile:   { title: 'Profile Management',  sub: 'Manage platform languages and tags'         },
-  billing:   { title: 'Billing',             sub: 'Track cloud infrastructure spend'           },
+  billing:   { title: 'Billing and Usage',   sub: 'Track cloud infrastructure spend'           },
   settings:  { title: 'Settings',            sub: 'Manage your account settings'               },
 };
 
