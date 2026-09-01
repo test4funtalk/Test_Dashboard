@@ -4,10 +4,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
   Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy,
-  AlertTriangle, Smartphone, MessageCircle,
+  AlertTriangle, Smartphone, MessageCircle, Cloud,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
+import NotificationBell from '../../components/Navigation/NotificationBell';
 import CrashReasonsOverlay from './sections/CrashReasonsOverlay';
 import AppVersionOverlay from './sections/AppVersionOverlay';
 import api from '../../services/api';
@@ -25,6 +26,7 @@ import CheckoutManagementSection from './sections/CheckoutManagementSection';
 import ProfileManagementSection from './sections/ProfileManagementSection';
 import LeaderboardSection from './sections/LeaderboardSection';
 import SettingsSection from './sections/SettingsSection';
+import BillingManagementSection from './sections/BillingManagementSection';
 
 // ─── config ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +43,7 @@ const NAV = [
   { id: 'ads',       label: 'Ads Management',       Icon: Megaphone       },
   { id: 'profile',   label: 'Profile Management',   Icon: Languages       },
   { id: 'admins',    label: 'Admin Management',     Icon: Shield          },
+  { id: 'billing',   label: 'Billing',              Icon: Cloud           },
   { id: 'settings',  label: 'Settings',             Icon: Settings        },
 ];
 
@@ -57,6 +60,7 @@ const PAGE_META = {
   ads:       { title: 'Ads Management',      sub: 'Monitor and control ad campaigns'           },
   kyc:       { title: 'KYC Management',      sub: 'Review and approve host identity submissions' },
   profile:   { title: 'Profile Management',  sub: 'Manage platform languages and tags'         },
+  billing:   { title: 'Billing',             sub: 'Track cloud infrastructure spend'           },
   settings:  { title: 'Settings',            sub: 'Manage your account settings'               },
 };
 
@@ -73,6 +77,7 @@ const SECTION_MAP = {
   ads:       AdsManagementSection,
   profile:   ProfileManagementSection,
   admins:    AdminManagementSection,
+  billing:   BillingManagementSection,
   settings:  SettingsSection,
 };
 
@@ -269,6 +274,8 @@ const AdminDashboard = () => {
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-3">
+            <NotificationBell />
+
             <button
               title="App Version"
               onClick={() => setShowAppVersionOverlay(true)}
