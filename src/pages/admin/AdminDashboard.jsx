@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, CreditCard,
   Package, Megaphone, Settings, LogOut, Crown, Menu, Languages, PhoneCall, IdCard, Banknote, Trophy,
-  AlertTriangle, Smartphone, MessageCircle, Cloud,
+  AlertTriangle, Smartphone, MessageCircle, Cloud, Sparkles,
 } from 'lucide-react';
 import { logout } from '../../store/slices/authSlice';
 import AvatarDisplay from '../../components/ui/AvatarDisplay';
@@ -18,6 +18,7 @@ import AdminManagementSection from './sections/AdminManagementSection';
 import UserManagementSection from './sections/UserManagementSection';
 import PaymentManagementSection from './sections/PaymentManagementSection';
 import PackageManagementSection from './sections/PackageManagementSection';
+import IntroPackManagementSection from './sections/IntroPackManagementSection';
 import AdsManagementSection from './sections/AdsManagementSection';
 import CallManagementSection from './sections/CallManagementSection';
 import ChatManagementSection from './sections/ChatManagementSection';
@@ -40,6 +41,7 @@ const NAV = [
   { id: 'checkouts', label: 'Checkout Management',  Icon: Banknote        },
   { id: 'kyc',       label: 'KYC Management',       Icon: IdCard          },
   { id: 'packages',  label: 'Package Management',   Icon: Package         },
+  { id: 'introPack', label: 'Intro Pack',           Icon: Sparkles        },
   { id: 'ads',       label: 'Ads Management',       Icon: Megaphone       },
   { id: 'profile',   label: 'Profile Management',   Icon: Languages       },
   { id: 'admins',    label: 'Admin Management',     Icon: Shield          },
@@ -57,6 +59,7 @@ const PAGE_META = {
   payments:  { title: 'Payment Management',  sub: 'Track transactions and revenue'             },
   checkouts: { title: 'Checkout Management', sub: 'Review host withdrawal requests and payout config' },
   packages:  { title: 'Package Management',  sub: 'Manage subscription packages and plans'    },
+  introPack: { title: 'Intro Pack',          sub: 'One-time new-user offer — config, promo cost, and host progress' },
   ads:       { title: 'Ads Management',      sub: 'Monitor and control ad campaigns'           },
   kyc:       { title: 'KYC Management',      sub: 'Review and approve host identity submissions' },
   profile:   { title: 'Profile Management',  sub: 'Manage platform languages and tags'         },
@@ -74,6 +77,7 @@ const SECTION_MAP = {
   checkouts: CheckoutManagementSection,
   kyc:       KycManagementSection,
   packages:  PackageManagementSection,
+  introPack: IntroPackManagementSection,
   ads:       AdsManagementSection,
   profile:   ProfileManagementSection,
   admins:    AdminManagementSection,
