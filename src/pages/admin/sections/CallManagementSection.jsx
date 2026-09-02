@@ -780,13 +780,26 @@ const NightCallConfigTab = () => {
     setError(null);
     try {
       const { data } = await api.get('/api/admin/call-config');
-      setLiveConfig(data?.data ?? data ?? {});
+      const live = data?.data ?? data ?? {};
+      setLiveConfig(live);
+
+      // No night preset saved in this browser yet — prefill the fields from the
+      // real database values instead of leaving them blank.
+      const hasLocalPreset = CONFIG_FIELDS.some(({ key }) => nightState.preset[key] !== '' && nightState.preset[key] != null);
+      if (!hasLocalPreset) {
+        setForm({
+          coinsPerSecond: live.coinsPerSecond ?? '',
+          cashPerSecond: live.cashPerSecond ?? '',
+          minimumCallCoins: live.minimumCallCoins ?? '',
+          lowBalanceWarningSeconds: live.lowBalanceWarningSeconds ?? '',
+        });
+      }
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to load live config');
     } finally {
       setLoadingLive(false);
     }
-  }, []);
+  }, [nightState.preset]);
 
   useEffect(() => { loadLiveConfig(); }, [loadLiveConfig]);
 
