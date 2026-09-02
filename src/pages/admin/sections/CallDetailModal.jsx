@@ -3,6 +3,16 @@ import {
   X, Loader2, AlertCircle, Phone, Video, Clock, Coins,
   Gift, Star, Calendar, MessageSquare, Wallet, Bell,
 } from 'lucide-react';
+
+// Matches BILLING_TYPE_FILTERS in Backend3/controllers/adminController.js
+const BILLING_TYPE_STYLES = {
+  intro:  'bg-purple-100 text-purple-700',
+  mixed:  'bg-blue-100 text-blue-600',
+  billed: 'bg-neutral-100 text-neutral-500',
+  none:   'bg-neutral-50 text-neutral-300',
+};
+
+const BILLING_TYPE_LABELS = { intro: 'Intro Pack', mixed: 'Mixed', billed: 'Billed', none: 'None' };
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
 
@@ -121,6 +131,12 @@ const CallDetailModal = ({ callId, onClose }) => {
               <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
                 {call.status}
               </span>
+              {call.billingType && (
+                <span className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${BILLING_TYPE_STYLES[call.billingType] || 'bg-neutral-100 text-neutral-600'}`}>
+                  {(call.billingType === 'intro' || call.billingType === 'mixed') && <Gift size={12} />}
+                  {BILLING_TYPE_LABELS[call.billingType] || call.billingType}
+                </span>
+              )}
               {call.endedBy && (
                 <span className="text-xs text-neutral-400">Ended by <span className="font-medium capitalize text-neutral-600">{call.endedBy}</span></span>
               )}
@@ -164,7 +180,7 @@ const CallDetailModal = ({ callId, onClose }) => {
               <StatTile icon={Clock}    label="Duration"   value={fmtDuration(call.duration)} />
               <StatTile icon={Calendar} label="Started"    value={fmtDateTime(call.startedAt)} />
               <StatTile icon={Calendar} label="Ended"      value={fmtDateTime(call.endedAt)} />
-              <StatTile icon={Coins}    label="Coins Billed" value={call.billing?.totalCoinsDeducted ?? 0} />
+              <StatTile icon={Coins}    label="Coins Billed" value={(call.billing?.totalCoinsDeducted ?? 0) + (call.billing?.introCoinsDeducted ?? 0)} />
             </div>
 
             {/* Push Notification */}
@@ -198,9 +214,17 @@ const CallDetailModal = ({ callId, onClose }) => {
               <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <div><p className="text-xs text-neutral-400">Coins / sec</p><p className="font-medium">{call.billing?.coinsPerSecond ?? '—'}</p></div>
                 <div><p className="text-xs text-neutral-400">Cash / sec</p><p className="font-medium">{call.billing?.cashPerSecond ?? '—'}</p></div>
-                <div><p className="text-xs text-neutral-400">Coins Deducted</p><p className="font-medium">{call.billing?.totalCoinsDeducted ?? 0}</p></div>
+                <div><p className="text-xs text-neutral-400">Coins Deducted</p><p className="font-medium">{(call.billing?.totalCoinsDeducted ?? 0) + (call.billing?.introCoinsDeducted ?? 0)}</p></div>
                 <div><p className="text-xs text-neutral-400">Cash Earned</p><p className="font-medium">{call.billing?.totalCashEarned ?? 0}</p></div>
               </div>
+              {call.billing?.introCoinsDeducted > 0 && (
+                <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700">
+                  <Gift size={12} /> {call.billing.introCoinsDeducted} coins from Intro Pack
+                  {call.billingType === 'mixed' && call.billing?.totalCoinsDeducted > 0 && (
+                    <span className="font-normal text-purple-500"> · {call.billing.totalCoinsDeducted} normal coins</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Wallet Snapshot */}

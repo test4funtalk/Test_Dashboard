@@ -63,6 +63,24 @@ const TYPE_OPTIONS = [
   { value: 'video', label: 'Video'     },
 ];
 
+// Matches BILLING_TYPE_FILTERS in Backend3/controllers/adminController.js
+const BILLING_TYPE_STYLES = {
+  intro:  'bg-purple-100 text-purple-700',
+  mixed:  'bg-blue-100 text-blue-600',
+  billed: 'bg-neutral-100 text-neutral-500',
+  none:   'bg-neutral-50 text-neutral-300',
+};
+
+const BILLING_TYPE_LABELS = { intro: 'Intro Pack', mixed: 'Mixed', billed: 'Billed', none: 'None' };
+
+const BILLING_TYPE_OPTIONS = [
+  { value: '',       label: 'All Billing Types' },
+  { value: 'intro',  label: 'Intro Pack'        },
+  { value: 'mixed',  label: 'Mixed'             },
+  { value: 'billed', label: 'Billed'            },
+  { value: 'none',   label: 'None'              },
+];
+
 // Matches the period buckets accepted by GET /api/admin/calls (adminController.callDateRange)
 const PERIOD_OPTIONS = [
   { value: '',            label: 'All Time'      },
@@ -128,6 +146,7 @@ const CallsTab = () => {
   const [debouncedSearch, setDs] = useState('');
   const [status, setStatus]      = useState('');
   const [callType, setCallType]  = useState('');
+  const [billingType, setBillingType] = useState('');
   const [period, setPeriod]      = useState('');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo,   setCustomTo]   = useState('');
@@ -136,6 +155,7 @@ const CallsTab = () => {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [statusCounts, setStatusCounts] = useState({ pending: 0, active: 0, ended: 0, rejected: 0, missed: 0, cancelled: 0 });
+  const [billingTypeCounts, setBillingTypeCounts] = useState({ intro: 0, billed: 0, mixed: 0, none: 0 });
 
   const [activeCallId, setActiveCallId] = useState(null);
 
@@ -147,8 +167,9 @@ const CallsTab = () => {
         params: {
           page, limit: 100,
           ...(debouncedSearch && { search: debouncedSearch }),
-          ...(status   && { status }),
-          ...(callType && { callType }),
+          ...(status      && { status }),
+          ...(callType    && { callType }),
+          ...(billingType && { billingType }),
           ...(period && period !== 'custom' && { period }),
           ...(period === 'custom' && customFrom && { startDate: new Date(customFrom).toISOString() }),
           ...(period === 'custom' && customTo   && { endDate: new Date(customTo + 'T23:59:59').toISOString() }),
@@ -160,12 +181,13 @@ const CallsTab = () => {
       setPages(pagination.pages ?? 1);
       setTotal(pagination.total ?? list.length);
       if (data?.statusCounts) setStatusCounts(data.statusCounts);
+      if (data?.billingTypeCounts) setBillingTypeCounts(data.billingTypeCounts);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load calls');
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch, status, callType, period, customFrom, customTo]);
+  }, [page, debouncedSearch, status, callType, billingType, period, customFrom, customTo]);
 
   useEffect(() => { fetchCalls(); }, [fetchCalls]);
 
@@ -213,6 +235,14 @@ const CallsTab = () => {
             iconClass={iconClass}
           />
         ))}
+        <KpiCard
+          label="Intro Pack Calls"
+          value={fmtNum(billingTypeCounts.intro)}
+          pct={total > 0 ? Math.round(((billingTypeCounts.intro ?? 0) / total) * 100) : 0}
+          Icon={Gift}
+          trend="up"
+          iconClass={BILLING_TYPE_STYLES.intro}
+        />
       </div>
 
       {/* Main card */}
@@ -245,6 +275,13 @@ const CallsTab = () => {
                 className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
               >
                 {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <select
+                value={billingType}
+                onChange={onFilterChange(setBillingType)}
+                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              >
+                {BILLING_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
               <select
                 value={period}
@@ -307,18 +344,19 @@ const CallsTab = () => {
           <div className="py-16 text-center">
             <PhoneCall size={36} className="mx-auto mb-3 text-neutral-200" />
             <p className="text-sm font-medium text-neutral-400">
-              {search || status || callType || period ? 'No calls match your filters' : 'No calls yet'}
+              {search || status || callType || billingType || period ? 'No calls match your filters' : 'No calls yet'}
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1560px] border-collapse text-sm">
+            <table className="w-full min-w-[1680px] border-collapse text-sm">
               <thead>
                 <tr className="bg-neutral-50">
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Billing</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason (Frontend)</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
@@ -376,6 +414,17 @@ const CallsTab = () => {
                           {call.status}
                         </span>
                       </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        {call.billingType === 'intro' || call.billingType === 'mixed' ? (
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${BILLING_TYPE_STYLES[call.billingType]}`}>
+                            <Gift size={10} /> {BILLING_TYPE_LABELS[call.billingType]}
+                          </span>
+                        ) : (
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${BILLING_TYPE_STYLES[call.billingType] || 'bg-neutral-50 text-neutral-300'}`}>
+                            {BILLING_TYPE_LABELS[call.billingType] || '—'}
+                          </span>
+                        )}
+                      </td>
                       <td className="border border-neutral-200 px-4 py-3 max-w-[180px]">
                         {call.endReason
                           ? <span className="truncate text-xs font-medium text-neutral-700" title={call.endReason}>{call.endReason}</span>
@@ -386,8 +435,8 @@ const CallsTab = () => {
                         {fmtDuration(call.duration)}
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                        {call.billing?.totalCoinsDeducted
-                          ? <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{call.billing.totalCoinsDeducted}</span>
+                        {(call.billing?.totalCoinsDeducted ?? 0) + (call.billing?.introCoinsDeducted ?? 0)
+                          ? <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{(call.billing?.totalCoinsDeducted ?? 0) + (call.billing?.introCoinsDeducted ?? 0)}</span>
                           : <span className="text-xs text-neutral-300">—</span>
                         }
                       </td>

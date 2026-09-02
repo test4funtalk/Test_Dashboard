@@ -9,7 +9,7 @@ import {
   PhoneCall, Wallet, TrendingUp, TrendingDown, Minus, Plus,
   Copy, Check, Receipt, Package, IndianRupee,
   IdCard, Banknote, Landmark, ExternalLink, ImageOff, Ban, CreditCard,
-  PhoneOff, PhoneMissed, Upload,
+  PhoneOff, PhoneMissed, Upload, Tag,
 } from 'lucide-react';
 import {
   fetchUsers, updateUser, deleteUser,
@@ -299,6 +299,110 @@ const MotherTongueSelect = ({ value = [], onChange, languages, loading }) => {
           </div>
           <div className="border-t border-neutral-50 px-3 py-2">
             <p className="text-[10px] text-neutral-300">Only listed languages can be selected</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── tags multi-select (edit form) ────────────────────────────────────────────
+
+const TagsMultiSelect = ({ value = [], onChange, tags, loading }) => {
+  const [open, setOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const openDropdown = () => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setDropUp(window.innerHeight - rect.bottom < 230);
+    }
+    setOpen((o) => !o);
+  };
+
+  const byId = new Map(tags.map((t) => [t._id, t.name]));
+  const filtered = tags.filter((t) => (t.name || '').toLowerCase().includes(search.toLowerCase()));
+
+  const toggle = (id) => {
+    onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <div
+        onClick={openDropdown}
+        className="min-h-[42px] w-full cursor-pointer rounded-xl border border-neutral-200 px-3 py-2 focus-within:border-neutral-400 flex flex-wrap gap-1.5 items-start"
+      >
+        {value.length === 0 && (
+          <span className="text-sm text-neutral-400 py-0.5">
+            {loading ? 'Loading tags…' : 'Choose from listed tags…'}
+          </span>
+        )}
+        {value.map((id) => (
+          <span key={id} className="flex items-center gap-1 rounded-full bg-neutral-900 px-2.5 py-0.5 text-xs font-medium text-white">
+            {byId.get(id) || '…'}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); toggle(id); }}
+              className="hover:opacity-70"
+            >
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+        <span className="ml-auto py-0.5 text-neutral-400">
+          <ChevronRight size={14} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+        </span>
+      </div>
+
+      {open && (
+        <div className={`absolute z-50 w-full rounded-xl border border-neutral-200 bg-white shadow-lg ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+          <div className="p-2 border-b border-neutral-50">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter listed tags…"
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+              autoFocus
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto divide-y divide-neutral-50">
+            {loading ? (
+              <div className="flex items-center justify-center py-6 text-neutral-400 text-sm gap-2">
+                <Loader2 size={14} className="animate-spin" /> Loading…
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="py-5 text-center">
+                <p className="text-xs font-medium text-neutral-400">No match in available tags</p>
+              </div>
+            ) : (
+              filtered.map((tag) => {
+                const checked = value.includes(tag._id);
+                return (
+                  <label
+                    key={tag._id}
+                    className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-neutral-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(tag._id)}
+                      className="h-4 w-4 rounded accent-black"
+                    />
+                    <span className="text-sm">{tag.name}</span>
+                  </label>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -2816,6 +2920,13 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
               ? <span className="text-red-500">Not Allowed</span>
               : '—'
           } />
+          <InfoRow icon={Tag} label="Tags" value={
+            user.tags?.length
+              ? <div className="flex flex-wrap gap-1 mt-0.5">{user.tags.map((t) => (
+                  <span key={t?._id ?? t} className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs">{t?.name ?? t}</span>
+                ))}</div>
+              : '—'
+          } />
         </div>
 
         {/* Account Info */}
@@ -2828,6 +2939,11 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
               : <span className="text-neutral-400">No</span>
           } />
           <InfoRow icon={Wifi} label="Current Status" value={<OnlineBadge status={user.userCurrentStatus} />} />
+          <InfoRow icon={Gift} label="First Offer Available" value={
+            user.redeemFirstoffer !== false
+              ? <span className="text-green-600 font-medium">Yes</span>
+              : <span className="text-neutral-400">Redeemed / No</span>
+          } />
         </div>
 
         {/* Timestamps */}
@@ -2979,6 +3095,10 @@ const UserManagementSection = () => {
   const [languages, setLanguages]     = useState([]);
   const [langsLoading, setLangsLoading] = useState(false);
 
+  // tags
+  const [tags, setTags]           = useState([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
+
   // ── fetch languages once ────────────────────────────────────────────────
   useEffect(() => {
     setLangsLoading(true);
@@ -2986,6 +3106,19 @@ const UserManagementSection = () => {
       .then(setLanguages)
       .catch(() => {})
       .finally(() => setLangsLoading(false));
+  }, []);
+
+  // ── fetch tags once ────────────────────────────────────────────────────
+  useEffect(() => {
+    setTagsLoading(true);
+    api.get('/api/tags/admin/getAllTags', { params: { limit: 500 } })
+      .then(({ data }) => {
+        const root = data?.data ?? data;
+        const list = Array.isArray(root) ? root : root?.tags ?? root?.result ?? root?.items ?? [];
+        setTags(list);
+      })
+      .catch(() => {})
+      .finally(() => setTagsLoading(false));
   }, []);
 
 
@@ -3054,6 +3187,7 @@ const UserManagementSection = () => {
   // ── handlers ────────────────────────────────────────────────────────────
 
   const normLang = (l) => (typeof l === 'string' ? l : (l?.name ?? l?.languageName ?? l?.language ?? null));
+  const normTagId = (t) => (typeof t === 'string' ? t : (t?._id ?? null));
 
   const openEdit = (user) => {
     setEditTarget(user);
@@ -3072,12 +3206,26 @@ const UserManagementSection = () => {
       status:             user.status             || 'active',
       avatar:             user.avatar             || '',
       isVerified:         !!user.isVerified,
+      tags:               Array.isArray(user.tags) ? user.tags.map(normTagId).filter(Boolean) : [],
+      redeemFirstoffer:   user.redeemFirstoffer !== false,
+      userCurrentStatus:  user.userCurrentStatus || 'offline',
+      currentCallId:      user.currentCallId || '',
+      lastSeen:           user.lastSeen ? new Date(user.lastSeen).toISOString().slice(0, 16) : '',
+      lastUsernameUpdate: user.lastUsernameUpdate ? new Date(user.lastUsernameUpdate).toISOString().slice(0, 16) : '',
     });
   };
 
   const handleEditSubmit = (e) => {
     e.preventDefault();
-    dispatch(updateUser({ userId: editTarget._id, payload: { ...editForm } }));
+
+    const payload = {
+      ...editForm,
+      currentCallId: editForm.currentCallId ? editForm.currentCallId.trim() : null,
+      lastSeen: editForm.lastSeen ? new Date(editForm.lastSeen).toISOString() : null,
+      lastUsernameUpdate: editForm.lastUsernameUpdate ? new Date(editForm.lastUsernameUpdate).toISOString() : null,
+    };
+
+    dispatch(updateUser({ userId: editTarget._id, payload }));
   };
 
   const confirmDelete = () => {
@@ -3166,7 +3314,7 @@ const UserManagementSection = () => {
           </div>
         )}
         {/* Edit + delete modals rendered on top of detail page */}
-        {editTarget && <EditModal {...{ editTarget, editForm, setEditForm, handleEditSubmit, updateLoading, updateError, languages, langsLoading, dispatch, resetUpdateStatus, setEditTarget }} />}
+        {editTarget && <EditModal {...{ editTarget, editForm, setEditForm, handleEditSubmit, updateLoading, updateError, languages, langsLoading, tags, tagsLoading, dispatch, resetUpdateStatus, setEditTarget }} />}
         {deleteTarget && <DeleteModal deleteTarget={deleteTarget} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />}
       </>
     );
@@ -3425,6 +3573,8 @@ const UserManagementSection = () => {
           updateError={updateError}
           languages={languages}
           langsLoading={langsLoading}
+          tags={tags}
+          tagsLoading={tagsLoading}
           dispatch={dispatch}
           resetUpdateStatus={resetUpdateStatus}
           setEditTarget={setEditTarget}
@@ -3774,6 +3924,7 @@ const EditModal = ({
   editTarget, editForm, setEditForm, handleEditSubmit,
   updateLoading, updateError,
   languages, langsLoading,
+  tags, tagsLoading,
   dispatch, resetUpdateStatus, setEditTarget,
 }) => {
   const closeEdit = () => { setEditTarget(null); dispatch(resetUpdateStatus()); };
@@ -3781,7 +3932,7 @@ const EditModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="flex w-full flex-col max-h-[92vh] rounded-t-3xl border border-neutral-200 bg-white shadow-2xl sm:max-w-xl sm:rounded-2xl">
+      <div className="flex w-full flex-col max-h-[92vh] rounded-t-3xl border border-neutral-200 bg-white shadow-2xl sm:max-w-2xl sm:rounded-2xl">
 
         {/* Sticky header */}
         <div className="flex flex-shrink-0 items-center justify-between border-b border-neutral-100 px-5 py-4">
@@ -3877,6 +4028,37 @@ const EditModal = ({
                 className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400" />
             </div>
 
+            {/* Current Online Status */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Online Status</label>
+              <select value={editForm.userCurrentStatus} onChange={(e) => set('userCurrentStatus', e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400">
+                {['online', 'offline', 'incall'].map((s) => <option key={s} value={s} className="capitalize">{s}</option>)}
+              </select>
+            </div>
+
+            {/* Current Call ID */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Current Call ID</label>
+              <input type="text" value={editForm.currentCallId} onChange={(e) => set('currentCallId', e.target.value)}
+                placeholder="(none)"
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400" />
+            </div>
+
+            {/* Last Seen */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Last Seen</label>
+              <input type="datetime-local" value={editForm.lastSeen} onChange={(e) => set('lastSeen', e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400" />
+            </div>
+
+            {/* Last Username Update */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">Last Username Update</label>
+              <input type="datetime-local" value={editForm.lastUsernameUpdate} onChange={(e) => set('lastUsernameUpdate', e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-400" />
+            </div>
+
             {/* Mother Tongue */}
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">
@@ -3888,6 +4070,20 @@ const EditModal = ({
                 onChange={(v) => set('motherTongue', v)}
                 languages={languages}
                 loading={langsLoading}
+              />
+            </div>
+
+            {/* Tags */}
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Tags
+                <span className="ml-1 font-normal normal-case text-neutral-400">(multi-select)</span>
+              </label>
+              <TagsMultiSelect
+                value={editForm.tags || []}
+                onChange={(v) => set('tags', v)}
+                tags={tags}
+                loading={tagsLoading}
               />
             </div>
 
@@ -3906,6 +4102,25 @@ const EditModal = ({
                 />
                 <div className={`relative h-7 w-12 rounded-full transition-colors ${editForm.isVerified ? 'bg-black' : 'bg-neutral-200'}`}>
                   <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${editForm.isVerified ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+              </div>
+            </label>
+
+            {/* Redeem first offer toggle */}
+            <label className="flex cursor-pointer items-center justify-between rounded-xl border border-neutral-200 px-4 py-3 transition hover:bg-neutral-50 sm:col-span-2">
+              <div>
+                <p className="text-sm font-medium">First Offer Available</p>
+                <p className="text-xs text-neutral-400">On = user can still redeem the first-purchase offer</p>
+              </div>
+              <div className="flex flex-shrink-0 items-center">
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={!!editForm.redeemFirstoffer}
+                  onChange={() => set('redeemFirstoffer', !editForm.redeemFirstoffer)}
+                />
+                <div className={`relative h-7 w-12 rounded-full transition-colors ${editForm.redeemFirstoffer ? 'bg-black' : 'bg-neutral-200'}`}>
+                  <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${editForm.redeemFirstoffer ? 'translate-x-6' : 'translate-x-1'}`} />
                 </div>
               </div>
             </label>
