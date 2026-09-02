@@ -5,7 +5,7 @@ import {
   Loader2, ChevronLeft, ChevronRight, Coins, Gift,
   Settings, Plus, Pencil, Trash2, X, CheckCircle, Save, Wallet,
   TrendingUp, TrendingDown, PhoneOff, PhoneMissed, PhoneIncoming,
-  Clock, Ban,
+  Clock, Ban, Moon,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -723,6 +723,238 @@ const CallConfigTab = () => {
   );
 };
 
+// ─── night billing config ──────────────────────────────────────────────────────
+// The night rate *preset* (what numbers to use for night mode) is kept in this
+// browser — there's no backend field for a second rate set. But the toggle
+// itself calls the real GET/PUT /api/admin/call-config endpoint (same one the
+// day tab uses), so switching it on/off genuinely overwrites the live MongoDB
+// config that active billing reads — it's a real production override, not a
+// local simulation.
+
+const NIGHT_CONFIG_STORAGE_KEY = 'admin_night_billing_config';
+
+const EMPTY_NIGHT_STATE = {
+  enabled: false,
+  preset: { coinsPerSecond: '', cashPerSecond: '', minimumCallCoins: '', lowBalanceWarningSeconds: '' },
+  dayBackup: null,
+  updatedAt: null,
+};
+
+const loadNightState = () => {
+  try {
+    const raw = localStorage.getItem(NIGHT_CONFIG_STORAGE_KEY);
+    if (!raw) return EMPTY_NIGHT_STATE;
+    const parsed = JSON.parse(raw);
+    return { ...EMPTY_NIGHT_STATE, ...parsed, preset: { ...EMPTY_NIGHT_STATE.preset, ...(parsed.preset || {}) } };
+  } catch {
+    return EMPTY_NIGHT_STATE;
+  }
+};
+
+const buildConfigBody = (values) => {
+  const body = {};
+  CONFIG_FIELDS.forEach(({ key }) => {
+    const v = values[key];
+    if (v !== '' && v != null) body[key] = Number(v);
+  });
+  return body;
+};
+
+const NightCallConfigTab = () => {
+  const [nightState, setNightState] = useState(() => loadNightState());
+  const [form, setForm]             = useState(() => loadNightState().preset);
+  const [liveConfig, setLiveConfig] = useState(null);
+  const [loadingLive, setLoadingLive] = useState(false);
+  const [toggling, setToggling]     = useState(false);
+  const [error, setError]           = useState(null);
+  const [saved, setSaved]           = useState(false);
+  const [toggleMsg, setToggleMsg]   = useState('');
+
+  const persist = (next) => {
+    setNightState(next);
+    localStorage.setItem(NIGHT_CONFIG_STORAGE_KEY, JSON.stringify(next));
+  };
+
+  const loadLiveConfig = useCallback(async () => {
+    setLoadingLive(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/api/admin/call-config');
+      setLiveConfig(data?.data ?? data ?? {});
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to load live config');
+    } finally {
+      setLoadingLive(false);
+    }
+  }, []);
+
+  useEffect(() => { loadLiveConfig(); }, [loadLiveConfig]);
+
+  const handleSavePreset = async () => {
+    const preset = {
+      coinsPerSecond: form.coinsPerSecond === '' ? '' : Number(form.coinsPerSecond),
+      cashPerSecond: form.cashPerSecond === '' ? '' : Number(form.cashPerSecond),
+      minimumCallCoins: form.minimumCallCoins === '' ? '' : Number(form.minimumCallCoins),
+      lowBalanceWarningSeconds: form.lowBalanceWarningSeconds === '' ? '' : Number(form.lowBalanceWarningSeconds),
+    };
+    const next = { ...nightState, preset, updatedAt: new Date().toISOString() };
+    persist(next);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3500);
+
+    // Night billing is already live — push the updated preset immediately.
+    if (next.enabled) {
+      try {
+        await api.put('/api/admin/call-config', buildConfigBody(preset));
+        await loadLiveConfig();
+      } catch (err) {
+        setError(err.response?.data?.message || 'Preset saved, but failed to push the live update');
+      }
+    }
+  };
+
+  const toggleEnabled = async () => {
+    setError(null);
+    setToggling(true);
+    try {
+      if (!nightState.enabled) {
+        // Turning ON: snapshot the current live (day) rates so we can restore them later, then push night rates.
+        const { data } = await api.get('/api/admin/call-config');
+        const live = data?.data ?? data ?? {};
+        const dayBackup = {};
+        CONFIG_FIELDS.forEach(({ key }) => { if (live[key] !== undefined) dayBackup[key] = live[key]; });
+
+        await api.put('/api/admin/call-config', buildConfigBody(nightState.preset));
+        persist({ ...nightState, enabled: true, dayBackup });
+        setToggleMsg('Night rates pushed live — the dashboard config is now overridden.');
+      } else {
+        // Turning OFF: restore whatever day rates were live before we overrode them.
+        await api.put('/api/admin/call-config', buildConfigBody(nightState.dayBackup || {}));
+        persist({ ...nightState, enabled: false });
+        setToggleMsg('Day rates restored on the live dashboard config.');
+      }
+      await loadLiveConfig();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to update the live config');
+    } finally {
+      setToggling(false);
+      setTimeout(() => setToggleMsg(''), 3500);
+    }
+  };
+
+  return (
+    <div className="mt-6 rounded-2xl border border-neutral-200 bg-white">
+      {/* Header */}
+      <div className="border-b border-neutral-100 px-6 py-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-900">
+              <Moon size={16} className="text-white" />
+            </div>
+            <div>
+              <p className="font-semibold text-neutral-900">Night Billing Configuration</p>
+              <p className="text-xs text-neutral-400">Toggling overwrites the live Billing Configuration above via the same endpoint</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${nightState.enabled ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-500'}`}>
+              {nightState.enabled ? 'Night Billing Live' : 'Day Billing Live'}
+            </span>
+
+            {/* Use Night Billing toggle */}
+            <label className="flex cursor-pointer items-center gap-3">
+              <span className="text-xs font-medium text-neutral-600">Use Night Billing</span>
+              <input type="checkbox" className="sr-only" checked={nightState.enabled} disabled={toggling} onChange={toggleEnabled} />
+              <div className={`relative h-6 w-11 rounded-full transition-colors ${nightState.enabled ? 'bg-black' : 'bg-neutral-200'} ${toggling ? 'opacity-50' : ''}`}>
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${nightState.enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+              </div>
+            </label>
+          </div>
+        </div>
+        {toggleMsg && (
+          <p className="mt-2 text-xs font-medium text-green-700">{toggleMsg}</p>
+        )}
+      </div>
+
+      <div className="p-6 space-y-6">
+
+        {/* Fields grid — the night preset */}
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {CONFIG_FIELDS.map(({ key, label, desc, unit }) => (
+            <div key={key} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">
+                {label}
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={form[key] ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium outline-none focus:border-neutral-400"
+                />
+                <span className="flex-shrink-0 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs font-medium text-neutral-500">
+                  {unit}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-neutral-400">{desc}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Actual live values from MongoDB, via GET /api/admin/call-config */}
+        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Live Values (from database)</p>
+            <button
+              onClick={loadLiveConfig}
+              disabled={loadingLive}
+              className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+            >
+              <RefreshCw size={11} className={loadingLive ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {CONFIG_FIELDS.map(({ key, label, unit }) => (
+              <span key={key} className="rounded-full border border-neutral-100 bg-neutral-50 px-3 py-1 text-xs text-neutral-600">
+                <span className="font-medium">{label}:</span> {liveConfig?.[key] ?? '—'} {unit}
+              </span>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-neutral-400">
+            Last saved: {fmtDateTime(liveConfig?.updatedAt)}
+          </p>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <AlertCircle size={14} /> {error}
+          </div>
+        )}
+        {saved && (
+          <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            <CheckCircle size={14} /> Night preset saved{nightState.enabled ? ' and pushed live' : ''}.
+          </div>
+        )}
+
+        {/* Save button */}
+        <div className="flex justify-end">
+          <button
+            onClick={handleSavePreset}
+            className="flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700"
+          >
+            <Save size={14} />
+            Save Night Preset
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── gift config tab ──────────────────────────────────────────────────────────
 
 const GIFT_FILTER_TABS = [
@@ -1259,7 +1491,12 @@ const CallManagementSection = () => {
       </div>
 
       {activeTab === 'calls'  && <CallsTab />}
-      {activeTab === 'config' && <CallConfigTab />}
+      {activeTab === 'config' && (
+        <>
+          <CallConfigTab />
+          <NightCallConfigTab />
+        </>
+      )}
       {activeTab === 'gifts'  && <GiftConfigTab />}
     </div>
   );
