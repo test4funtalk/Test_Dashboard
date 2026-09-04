@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Search, RefreshCw, AlertCircle, Loader2,
   ChevronLeft, ChevronRight, Coins, Settings, CheckCircle,
-  Save, Ban, Users, Gift,
+  Save, Ban, Users, Gift, Wallet,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import ChatConversationDetail from './ChatConversationDetail';
@@ -25,6 +25,85 @@ const parseGiftText = (text) => {
     if (parsed?.kind === 'chat_gift_v1') return parsed;
   } catch { /* not gift JSON */ }
   return null;
+};
+
+// Wallet "snapshot" for a conversation row, in the same before → after shape
+// Call Management shows via call.walletSnapshot. Chat has no such stored
+// snapshot — a conversation is an aggregate of many messages, not one bounded
+// event — so this is a computed estimate: current live balance minus what
+// this conversation billed (messages + gifts) gives the "before" figure.
+// It can drift if the wallet moved for unrelated reasons (other calls,
+// purchases, withdrawals) between the first message and now.
+const RowWalletSnapshot = ({ userId, isHost, billed }) => {
+  const [wallet, setWallet]   = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    api.get(isHost ? `/api/admin/host-wallet/${userId}` : `/api/wallet/admin/${userId}`)
+      .then(({ data }) => { if (alive) setWallet(data?.data ?? null); })
+      .catch(() => { if (alive) setWallet(null); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [userId, isHost]);
+
+  if (!userId) return <span className="text-xs text-neutral-300">—</span>;
+  if (loading) return <span className="text-xs text-neutral-300">…</span>;
+
+  if (isHost) {
+    const after  = wallet?.cash ?? 0;
+    const before = Math.max(0, after - billed);
+    return (
+      <span className="flex items-center gap-1 text-xs font-medium text-green-700">
+        <Wallet size={11} className="flex-shrink-0 text-green-500" />
+        ₹{fmtNum(before)} → ₹{fmtNum(after)}
+      </span>
+    );
+  }
+
+  const after  = wallet?.coins ?? wallet?.balance ?? 0;
+  const before = Math.max(0, after - billed);
+  return (
+    <span className="flex items-center gap-1 text-xs font-medium text-amber-700">
+      <Coins size={11} className="flex-shrink-0 text-amber-500" />
+      {fmtNum(before)} → {fmtNum(after)}
+    </span>
+  );
+};
+
+// Matches BILLING_TYPE_STYLES/computeCallBillingType in Call Management —
+// same visual language, same intro/mixed/billed/none classification, just
+// driven by text-message counts (introMessageCount / billedMessageCount)
+// instead of a coin total, since the backend tracks intro-pack usage per
+// message (isIntroPack) and aggregates both counts per conversation in
+// listChatConversations (Backend3/controllers/adminController.js).
+const BILLING_TYPE_STYLES = {
+  intro:  'bg-purple-100 text-purple-700',
+  mixed:  'bg-blue-100 text-blue-600',
+  billed: 'bg-neutral-100 text-neutral-500',
+  none:   'bg-neutral-50 text-neutral-300',
+};
+
+const BILLING_TYPE_LABELS = { intro: 'Intro Pack', mixed: 'Mixed', billed: 'Billed', none: 'None' };
+
+const computeChatBillingType = ({ introMessageCount, billedMessageCount }) => {
+  const intro  = introMessageCount ?? 0;
+  const billed = billedMessageCount ?? 0;
+  if (intro > 0 && billed > 0) return 'mixed';
+  if (intro > 0) return 'intro';
+  if (billed > 0) return 'billed';
+  return 'none';
+};
+
+const ChatBillingBadge = ({ row }) => {
+  const type = computeChatBillingType(row);
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${BILLING_TYPE_STYLES[type]}`}>
+      {(type === 'intro' || type === 'mixed') && <Gift size={10} />}
+      {BILLING_TYPE_LABELS[type]}
+    </span>
+  );
 };
 
 const SECTION_TABS = [
@@ -161,18 +240,21 @@ const ChatConversationsTab = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1320px] border-collapse text-sm">
+            <table className="w-full min-w-[1680px] border-collapse text-sm">
               <thead>
                 <tr className="bg-neutral-50">
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">User</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Billing</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Last Message</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Messages</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-24">Gift Cash</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">User Wallet</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host Wallet</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Last Activity</th>
                 </tr>
               </thead>
@@ -208,21 +290,27 @@ const ChatConversationsTab = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="border border-neutral-200 px-4 py-3 max-w-[240px]">
-                        {gift ? (
-                          <span className="flex items-center gap-1.5 text-xs font-medium text-pink-700">
-                            <span className="text-base">{gift.icon}</span> {gift.name}
-                          </span>
-                        ) : (
-                          <span className="truncate text-xs text-neutral-700" title={row.lastMessageText}>
-                            {row.lastMessageText || '—'}
-                          </span>
-                        )}
-                        {row.lastMessageDeleted && (
-                          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-500">
-                            <Ban size={9} /> deleted
-                          </span>
-                        )}
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        <ChatBillingBadge row={row} />
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 w-[240px] max-w-[240px]">
+                        <div className="flex min-w-0 items-center gap-2">
+                          {gift ? (
+                            <span className="flex min-w-0 items-center gap-1.5 truncate text-xs font-medium text-pink-700">
+                              <span className="flex-shrink-0 text-base">{gift.icon}</span>
+                              <span className="truncate">{gift.name}</span>
+                            </span>
+                          ) : (
+                            <span className="min-w-0 flex-1 truncate text-xs text-neutral-700" title={row.lastMessageText}>
+                              {row.lastMessageText || '—'}
+                            </span>
+                          )}
+                          {row.lastMessageDeleted && (
+                            <span className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-500">
+                              <Ban size={9} /> deleted
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap text-xs font-semibold text-neutral-700">
                         {fmtNum(row.messageCount)}
@@ -250,6 +338,20 @@ const ChatConversationsTab = () => {
                           ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{row.gifts.totalGiftCash}</span>
                           : <span className="text-xs text-neutral-300">—</span>
                         }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        <RowWalletSnapshot
+                          userId={row.userId}
+                          isHost={false}
+                          billed={(row.totalCoins ?? 0) + (row.gifts?.totalGiftCoins ?? 0)}
+                        />
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                        <RowWalletSnapshot
+                          userId={row.hostId}
+                          isHost
+                          billed={(row.totalCash ?? 0) + (row.gifts?.totalGiftCash ?? 0)}
+                        />
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
                         {fmtDateTime(row.lastMessageAt)}

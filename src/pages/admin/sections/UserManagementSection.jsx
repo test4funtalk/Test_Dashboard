@@ -5,7 +5,7 @@ import {
   Search, RefreshCw, Pencil, Trash2, Crown, X, ArrowLeft,
   ChevronLeft, ChevronRight, Users, UserCheck, ShieldCheck,
   Wifi, AlertCircle, Loader2, CheckCircle, Phone, Calendar,
-  Lock, Globe, Clock, UserCircle, Shield, Video, Coins, Gift,
+  Lock, Globe, Clock, UserCircle, Shield, Coins, Gift,
   PhoneCall, Wallet, TrendingUp, TrendingDown, Minus, Plus,
   Copy, Check, Receipt, Package, IndianRupee,
   IdCard, Banknote, Landmark, ExternalLink, ImageOff, Ban, CreditCard,
@@ -69,46 +69,15 @@ const CALL_STATUS_STYLES = {
   pending:   'bg-amber-100 text-amber-700',
 };
 
-// Machine-readable `reason` (always set by the server) mapped to a friendly
-// label + color; the optional free-text `endReason` a client may additionally
-// supply is surfaced as a hover tooltip on the badge rather than its own column.
-const REASON_LABELS = {
-  user_ended:               'Ended by User',
-  host_ended:                'Ended by Host',
-  rejected_by_host:          'Rejected',
-  cancelled_by_user:         'Cancelled by User',
-  cancelled_by_host:         'Cancelled by Host',
-  no_answer:                 'No Answer',
-  insufficient_balance:      'Insufficient Balance',
-  participant_disconnected:  'Disconnected',
-  stale_call_recovered:      'Recovered (Stale)',
-  server_shutdown:           'Server Shutdown',
+// Matches BILLING_TYPE_STYLES/LABELS in CallManagementSection.jsx exactly.
+const BILLING_TYPE_STYLES = {
+  intro:  'bg-purple-100 text-purple-700',
+  mixed:  'bg-blue-100 text-blue-600',
+  billed: 'bg-neutral-100 text-neutral-500',
+  none:   'bg-neutral-50 text-neutral-300',
 };
 
-const REASON_STYLES = {
-  user_ended:               'bg-neutral-100 text-neutral-600',
-  host_ended:                'bg-neutral-100 text-neutral-600',
-  rejected_by_host:          'bg-red-100 text-red-600',
-  cancelled_by_user:         'bg-orange-100 text-orange-600',
-  cancelled_by_host:         'bg-orange-100 text-orange-600',
-  no_answer:                 'bg-amber-100 text-amber-700',
-  insufficient_balance:      'bg-red-100 text-red-600',
-  participant_disconnected:  'bg-amber-100 text-amber-700',
-  stale_call_recovered:      'bg-purple-100 text-purple-600',
-  server_shutdown:           'bg-blue-100 text-blue-600',
-};
-
-const ReasonBadge = ({ reason, endReason }) => {
-  if (!reason) return <span className="text-xs text-neutral-300">—</span>;
-  return (
-    <span
-      title={endReason || undefined}
-      className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${REASON_STYLES[reason] || 'bg-neutral-100 text-neutral-600'}`}
-    >
-      {REASON_LABELS[reason] || reason}
-    </span>
-  );
-};
+const BILLING_TYPE_LABELS = { intro: 'Intro Pack', mixed: 'Mixed', billed: 'Billed', none: 'None' };
 
 const SORT_OPTIONS = [
   { value: '-createdAt', label: 'Newest first' },
@@ -586,7 +555,54 @@ const KpiCard = ({ label, value, pct, Icon, trend, iconClass = 'bg-neutral-100 t
   </div>
 );
 
-const CallHistoryCard = ({ userId, role }) => {
+// Normalizes both call-history response shapes into one row shape so the
+// table below can be a single exact copy of Call Management's CallsTab
+// markup. The host-side endpoint (/api/admin/hosts/:hostId/calls/earnings)
+// is a trimmed, earnings-focused response — it never returns billingType,
+// coins-deducted, or the caller's coin wallet snapshot, so those come back
+// null here and render as "—", same as Call Management would for a call
+// missing that data.
+const normalizeHostCall = (call, host) => ({
+  _id: call._id,
+  caller: { avatar: call.user?.avatar, username: call.user?.username, phone: call.user?.phone },
+  host: { avatar: host?.avatar, username: host?.username, phone: host?.phone },
+  status: call.status,
+  billingType: null,
+  endReason: call.endReason,
+  duration: call.duration,
+  coinsDeducted: null,
+  cashEarned: call.earnings?.callCash ?? null,
+  giftCoins: (call.gifts ?? []).reduce((s, g) => s + (g.coinsCost || 0), 0),
+  giftCash: (call.gifts ?? []).reduce((s, g) => s + (g.cashEarned || 0), 0),
+  userWallet: null,
+  hostWallet: call.wallet?.cashAtStart == null && call.wallet?.cashAtEnd == null
+    ? null
+    : { start: call.wallet?.cashAtStart, end: call.wallet?.cashAtEnd },
+  createdAt: call.createdAt,
+});
+
+const normalizeUserCall = (call, user) => ({
+  _id: call._id,
+  caller: { avatar: user?.avatar, username: user?.username, phone: user?.phone },
+  host: { avatar: call.hostId?.avatar || call.hostAvatar, username: call.hostId?.username || call.hostUsername, phone: call.hostId?.phone || call.hostPhone },
+  status: call.status,
+  billingType: call.billingType,
+  endReason: call.endReason,
+  duration: call.duration,
+  coinsDeducted: (call.billing?.totalCoinsDeducted ?? 0) + (call.billing?.introCoinsDeducted ?? 0),
+  cashEarned: call.billing?.totalCashEarned ?? null,
+  giftCoins: call.gifts?.totalGiftCoins ?? 0,
+  giftCash: call.gifts?.totalGiftCash ?? 0,
+  userWallet: call.walletSnapshot?.callerCoinsAtStart == null && call.walletSnapshot?.callerCoinsAtEnd == null
+    ? null
+    : { start: call.walletSnapshot?.callerCoinsAtStart, end: call.walletSnapshot?.callerCoinsAtEnd },
+  hostWallet: call.walletSnapshot?.hostCashAtStart == null && call.walletSnapshot?.hostCashAtEnd == null
+    ? null
+    : { start: call.walletSnapshot?.hostCashAtStart, end: call.walletSnapshot?.hostCashAtEnd },
+  createdAt: call.createdAt,
+});
+
+const CallHistoryCard = ({ userId, role, selfInfo }) => {
   const [calls, setCalls]     = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -604,6 +620,11 @@ const CallHistoryCard = ({ userId, role }) => {
   const [statusCounts, setStatusCounts] = useState(null);
 
   const isHost = role === 'host';
+
+  const normalizedCalls = useMemo(
+    () => calls.map((call) => (isHost ? normalizeHostCall(call, selfInfo) : normalizeUserCall(call, selfInfo))),
+    [calls, isHost, selfInfo]
+  );
 
   useEffect(() => {
     let alive = true;
@@ -820,199 +841,140 @@ const CallHistoryCard = ({ userId, role }) => {
             {period !== 'all' || status || callType ? 'No calls match your filters' : 'No calls yet'}
           </p>
         </div>
-      ) : isHost ? (
-        /* ════════════════════════════════════════════
-           HOST TABLE  –  /calls/earnings response shape
-           ════════════════════════════════════════════ */
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] border-collapse text-sm">
-            <thead>
-              <tr className="bg-neutral-50">
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Type</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host Cash</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {calls.map((call, index) => {
-                const TypeIcon  = call.callType === 'video' ? Video : Phone;
-                const giftCount = call.gifts?.length ?? 0;
-                const cashAtStart = call.wallet?.cashAtStart;
-                const cashAtEnd   = call.wallet?.cashAtEnd;
-                return (
-                  <tr
-                    key={call._id ?? index}
-                    onClick={() => call._id && setActiveCallId(call._id)}
-                    className="cursor-pointer transition-colors hover:bg-neutral-50"
-                  >
-                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
-                      {(page - 1) * 70 + index + 1}
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <AvatarDisplay src={call.user?.avatar} name={call.user?.username} size="sm" />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-neutral-900">{call.user?.username || '—'}</p>
-                          {call.user?.phone && <p className="truncate text-xs text-neutral-400">{call.user.phone}</p>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      <span className="flex items-center gap-1.5 text-xs text-neutral-600">
-                        <TypeIcon size={12} />
-                        <span className="capitalize">{call.callType}</span>
-                      </span>
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3">
-                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
-                        {call.status}
-                      </span>
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      <ReasonBadge reason={call.reason} endReason={call.endReason} />
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
-                      {fmtDuration(call.duration)}
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      {call.earnings?.totalCash != null
-                        ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.earnings.totalCash}</span>
-                        : <span className="text-xs text-neutral-300">—</span>
-                      }
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      {cashAtStart != null && cashAtEnd != null
-                        ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600">
-                            <span className="font-bold">₹</span>{cashAtStart} → <span className="font-bold">₹</span>{cashAtEnd}
-                          </span>
-                        : <span className="text-xs text-neutral-300">—</span>
-                      }
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      {giftCount > 0
-                        ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{giftCount}</span>
-                        : <span className="text-xs text-neutral-300">—</span>
-                      }
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
-                      {fmtDateTime(call.createdAt)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       ) : (
-        /* ═══════════════════════════════════════
-           USER TABLE  –  /calls response shape
-           ═══════════════════════════════════════ */
+        /* ════════════════════════════════════════════════════════════════
+           Exact copy of Call Management → Calls tab's table: same columns,
+           same order, same styling. Host rows show "—" for Billing/Coins
+           Deducted/User Wallet since /calls/earnings doesn't return that
+           data (see normalizeHostCall above) — everything else is real.
+           ════════════════════════════════════════════════════════════════ */
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1220px] border-collapse text-sm">
+          <table className="w-full min-w-[1680px] border-collapse text-sm">
             <thead>
               <tr className="bg-neutral-50">
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Type</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Billing</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason (Frontend)</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
-                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Caller Coins</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-24">Gift Cash</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">User Wallet</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Host Wallet</th>
                 <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Date / Time</th>
               </tr>
             </thead>
             <tbody>
-              {calls.map((call, index) => {
-                const TypeIcon = call.callType === 'video' ? Video : Phone;
-                const coinsAtStart = call.walletSnapshot?.callerCoinsAtStart;
-                const coinsAtEnd   = call.walletSnapshot?.callerCoinsAtEnd;
-                return (
-                  <tr
-                    key={call._id ?? index}
-                    onClick={() => setActiveCallId(call._id)}
-                    className="cursor-pointer transition-colors hover:bg-neutral-50"
-                  >
-                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
-                      {(page - 1) * 70 + index + 1}
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <AvatarDisplay src={call.callerId?.avatar || call.callerAvatar} name={call.callerId?.username || call.callerUsername} size="sm" />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-neutral-900">{call.callerId?.username || call.callerUsername || '—'}</p>
-                          {(call.callerId?.phone || call.callerPhone) && <p className="truncate text-xs text-neutral-400">{call.callerId?.phone || call.callerPhone}</p>}
-                        </div>
+              {normalizedCalls.map((call, index) => (
+                <tr
+                  key={call._id ?? index}
+                  onClick={() => call._id && setActiveCallId(call._id)}
+                  className="cursor-pointer transition-colors hover:bg-neutral-50"
+                >
+                  <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
+                    {(page - 1) * 70 + index + 1}
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <AvatarDisplay src={call.caller.avatar} name={call.caller.username} size="sm" />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-neutral-900">{call.caller.username || '—'}</p>
+                        {call.caller.phone && <p className="truncate text-xs text-neutral-400">{call.caller.phone}</p>}
                       </div>
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <AvatarDisplay src={call.hostId?.avatar || call.hostAvatar} name={call.hostId?.username || call.hostUsername} size="sm" />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-neutral-900">{call.hostId?.username || call.hostUsername || '—'}</p>
-                          {(call.hostId?.phone || call.hostPhone) && <p className="truncate text-xs text-neutral-400">{call.hostId?.phone || call.hostPhone}</p>}
-                        </div>
+                    </div>
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <AvatarDisplay src={call.host.avatar} name={call.host.username} size="sm" />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-neutral-900">{call.host.username || '—'}</p>
+                        {call.host.phone && <p className="truncate text-xs text-neutral-400">{call.host.phone}</p>}
                       </div>
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      <span className="flex items-center gap-1.5 text-xs text-neutral-600">
-                        <TypeIcon size={12} />
-                        <span className="capitalize">{call.callType}</span>
+                    </div>
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3">
+                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
+                      {call.status}
+                    </span>
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                    {call.billingType == null ? (
+                      <span className="text-xs text-neutral-300">—</span>
+                    ) : call.billingType === 'intro' || call.billingType === 'mixed' ? (
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${BILLING_TYPE_STYLES[call.billingType]}`}>
+                        <Gift size={10} /> {BILLING_TYPE_LABELS[call.billingType]}
                       </span>
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3">
-                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${CALL_STATUS_STYLES[call.status] || 'bg-neutral-100 text-neutral-600'}`}>
-                        {call.status}
+                    ) : (
+                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${BILLING_TYPE_STYLES[call.billingType] || 'bg-neutral-50 text-neutral-300'}`}>
+                        {BILLING_TYPE_LABELS[call.billingType] || '—'}
                       </span>
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      <ReasonBadge reason={call.reason} endReason={call.endReason} />
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
-                      {fmtDuration(call.duration)}
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      {call.billing?.totalCoinsDeducted
-                        ? <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{call.billing.totalCoinsDeducted}</span>
-                        : <span className="text-xs text-neutral-300">—</span>
-                      }
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      {coinsAtStart != null && coinsAtEnd != null
-                        ? <span className="flex items-center gap-1 text-xs font-medium text-neutral-600">
-                            {coinsAtStart.toLocaleString()} → {coinsAtEnd.toLocaleString()}
-                          </span>
-                        : <span className="text-xs text-neutral-300">—</span>
-                      }
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      {call.billing?.totalCashEarned != null
-                        ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.billing.totalCashEarned}</span>
-                        : <span className="text-xs text-neutral-300">—</span>
-                      }
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
-                      {call.gifts?.totalGiftCoins
-                        ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{call.gifts.totalGiftCoins}</span>
-                        : <span className="text-xs text-neutral-300">—</span>
-                      }
-                    </td>
-                    <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
-                      {fmtDateTime(call.createdAt)}
-                    </td>
-                  </tr>
-                );
-              })}
+                    )}
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 max-w-[180px]">
+                    {call.endReason
+                      ? <span className="truncate text-xs font-medium text-neutral-700" title={call.endReason}>{call.endReason}</span>
+                      : <span className="text-xs italic text-neutral-300">Not provided</span>
+                    }
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
+                    {fmtDuration(call.duration)}
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                    {call.coinsDeducted == null ? (
+                      <span className="text-xs text-neutral-300">—</span>
+                    ) : call.coinsDeducted ? (
+                      <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{call.coinsDeducted}</span>
+                    ) : (
+                      <span className="text-xs text-neutral-300">—</span>
+                    )}
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                    {call.cashEarned != null
+                      ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.cashEarned}</span>
+                      : <span className="text-xs text-neutral-300">—</span>
+                    }
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                    {call.giftCoins
+                      ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{call.giftCoins}</span>
+                      : <span className="text-xs text-neutral-300">—</span>
+                    }
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                    {call.giftCash
+                      ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{call.giftCash}</span>
+                      : <span className="text-xs text-neutral-300">—</span>
+                    }
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                    {call.userWallet ? (
+                      <span className="flex items-center gap-1 text-xs font-medium text-amber-700">
+                        <Coins size={11} className="flex-shrink-0 text-amber-500" />
+                        {fmtNum(call.userWallet.start)} → {fmtNum(call.userWallet.end)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-neutral-300">—</span>
+                    )}
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                    {call.hostWallet ? (
+                      <span className="flex items-center gap-1 text-xs font-medium text-green-700">
+                        <Wallet size={11} className="flex-shrink-0 text-green-500" />
+                        ₹{fmtNum(call.hostWallet.start)} → ₹{fmtNum(call.hostWallet.end)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-neutral-300">—</span>
+                    )}
+                  </td>
+                  <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
+                    {fmtDateTime(call.createdAt)}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -2995,7 +2957,7 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
               <HostOnlineTimeCard hostId={user._id} />
             </div>
           ) : (
-            <CallHistoryCard userId={user._id} role="host" />
+            <CallHistoryCard userId={user._id} role="host" selfInfo={user} />
           )
         ) : (
           dtab === 'payments' ? (
@@ -3003,7 +2965,7 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
               <PaymentHistoryCard userId={user._id} />
             </div>
           ) : (
-            <CallHistoryCard userId={user._id} role="user" />
+            <CallHistoryCard userId={user._id} role="user" selfInfo={user} />
           )
         )}
       </div>
