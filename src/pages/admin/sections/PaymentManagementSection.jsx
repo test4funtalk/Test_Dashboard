@@ -228,7 +228,9 @@ const PaymentManagementSection = () => {
       let successCount = 0;
       let pendingCount = 0;
       let failedCount  = 0;
-      const MAX_PAGES = 20;
+      // Safety ceiling only — real termination is `page <= pages` / empty page. Set high
+      // so totals aren't silently truncated once purchase volume passes a few thousand.
+      const MAX_PAGES = 9999999;
 
       do {
         const { data } = await api.get('/api/purchase/admin/all', { params: { ...baseParams, page: curPage } });

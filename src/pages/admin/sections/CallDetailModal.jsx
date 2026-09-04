@@ -13,6 +13,7 @@ const BILLING_TYPE_STYLES = {
 };
 
 const BILLING_TYPE_LABELS = { intro: 'Intro Pack', mixed: 'Mixed', billed: 'Billed', none: 'None' };
+import { useNavigate } from 'react-router-dom';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
 
@@ -61,8 +62,12 @@ const StatTile = ({ icon: Icon, label, value }) => (
   </div>
 );
 
-const ParticipantCard = ({ role, person, fallback }) => (
-  <div className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3">
+const ParticipantCard = ({ role, person, fallback, onOpenProfile }) => (
+  <div
+    className={`flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 ${person ? 'cursor-pointer transition hover:border-neutral-300 hover:bg-white' : ''}`}
+    onClick={person ? onOpenProfile : undefined}
+    title={person ? `View ${role.toLowerCase()} profile` : undefined}
+  >
     <AvatarDisplay src={person?.avatar || fallback?.avatar} name={person?.username || fallback?.username} size="sm" />
     <div className="min-w-0">
       <p className="text-xs font-medium uppercase tracking-wider text-neutral-400">{role}</p>
@@ -78,6 +83,12 @@ const ParticipantCard = ({ role, person, fallback }) => (
 // ─── modal ────────────────────────────────────────────────────────────────────
 
 const CallDetailModal = ({ callId, onClose }) => {
+  const navigate = useNavigate();
+  const goToProfile = (id, role) => {
+    if (!id) return;
+    navigate(`/admindashboard?tab=users&userId=${id}${role === 'host' ? '&usersTab=hosts' : ''}`);
+  };
+
   const [call, setCall]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -171,8 +182,8 @@ const CallDetailModal = ({ callId, onClose }) => {
 
             {/* Participants */}
             <div className="grid gap-3 sm:grid-cols-2">
-              <ParticipantCard role="Caller" person={call.callerId} fallback={{ username: call.callerUsername, phone: call.callerPhone, avatar: call.callerAvatar }} />
-              <ParticipantCard role="Host"   person={call.hostId}   fallback={{ username: call.hostUsername,   phone: call.hostPhone,   avatar: call.hostAvatar }} />
+              <ParticipantCard role="Caller" person={call.callerId} fallback={{ username: call.callerUsername, phone: call.callerPhone, avatar: call.callerAvatar }} onOpenProfile={() => goToProfile(call.callerId?._id, 'user')} />
+              <ParticipantCard role="Host"   person={call.hostId}   fallback={{ username: call.hostUsername,   phone: call.hostPhone,   avatar: call.hostAvatar }}   onOpenProfile={() => goToProfile(call.hostId?._id, 'host')} />
             </div>
 
             {/* Stat tiles */}

@@ -3184,6 +3184,39 @@ const UserManagementSection = () => {
     }
   }, [promotingId, users, hosts, selectedId]);
 
+  // ── deep-link fallback ───────────────────────────────────────────────────
+  // Arriving here via a direct link (e.g. clicking a caller/host avatar from
+  // Call Management) rather than clicking a row in this tab's own paginated
+  // list — the target user may not be on the currently loaded page. Once the
+  // normal role-scoped fetch has settled and still doesn't contain them, look
+  // them up directly by ID so the detail page still resolves.
+  const [deepLinkUser, setDeepLinkUser]       = useState(null);
+  const [deepLinkMissing, setDeepLinkMissing] = useState(false);
+  const [deepLinkLoading, setDeepLinkLoading] = useState(false);
+
+  useEffect(() => {
+    setDeepLinkUser(null);
+    setDeepLinkMissing(false);
+    if (!selectedId || loading) return;
+    const inList = [...users, ...hosts].find((u) => u._id === selectedId);
+    if (inList) return;
+
+    let cancelled = false;
+    setDeepLinkLoading(true);
+    api.get('/api/profile/admin/users', {
+      params: { page: 1, limit: 1, search: selectedId, role: activeTab === 'hosts' ? 'host' : 'user' },
+    })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rows  = data?.data?.users ?? [];
+        const found = rows.find((u) => u._id === selectedId) ?? null;
+        if (found) setDeepLinkUser(found); else setDeepLinkMissing(true);
+      })
+      .catch(() => { if (!cancelled) setDeepLinkMissing(true); })
+      .finally(() => { if (!cancelled) setDeepLinkLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedId, loading, users, hosts, activeTab]);
+
   // ── handlers ────────────────────────────────────────────────────────────
 
   const normLang = (l) => (typeof l === 'string' ? l : (l?.name ?? l?.languageName ?? l?.language ?? null));
@@ -3247,8 +3280,11 @@ const UserManagementSection = () => {
   const listLoading = loading;
   const listError   = error;
 
-  // derive selected user from Redux list so edits instantly reflect
-  const selectedUser = selectedId ? [...users, ...hosts].find((u) => u._id === selectedId) : null;
+  // derive selected user from Redux list so edits instantly reflect; fall back
+  // to the deep-link lookup when they're not on the currently loaded page
+  const selectedUser = selectedId
+    ? [...users, ...hosts].find((u) => u._id === selectedId) ?? deepLinkUser
+    : null;
 
   const displayStats = {
     totalUsers:    stats.totalUsers    || users.length,
@@ -3282,13 +3318,30 @@ const UserManagementSection = () => {
 
   // ── detail page view ─────────────────────────────────────────────────────
 
-  // Deep-linked (reload) into a detail view — the list for this tab hasn't
-  // resolved yet, so the user genuinely isn't in `users`/`hosts` yet. Show a
-  // spinner instead of falling through to the list view below.
-  if (selectedId && !selectedUser && loading) {
+  // Deep-linked (reload, or navigated in from another tab) into a detail view —
+  // the list for this tab hasn't resolved yet, or the fallback lookup is still
+  // in flight. Show a spinner instead of falling through to the list view below.
+  if (selectedId && !selectedUser && (loading || deepLinkLoading)) {
     return (
       <div className="flex h-64 items-center justify-center gap-2 text-neutral-400">
         <Loader2 size={20} className="animate-spin" /> Loading details…
+      </div>
+    );
+  }
+
+  // Both the list and the deep-link fallback have settled and neither found
+  // this ID — say so instead of silently dropping back to the list view.
+  if (selectedId && !selectedUser && deepLinkMissing) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-3 text-neutral-400">
+        <AlertCircle size={22} />
+        <p className="text-sm">Couldn't find that {activeTab === 'hosts' ? 'host' : 'user'}.</p>
+        <button
+          onClick={() => setSelectedId(null)}
+          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+        >
+          Back to list
+        </button>
       </div>
     );
   }

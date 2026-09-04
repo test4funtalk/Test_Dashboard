@@ -17,7 +17,9 @@ const PERIODS = [
 ];
 
 const PAGE_SIZE = 100;
-const MAX_PAGES = 20;
+// Safety ceiling only — real termination is `page <= totalPages` / empty page. Set high
+// so totals aren't silently truncated once purchase volume passes a few thousand.
+const MAX_PAGES = 9999999;
 
 const localDayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const localMonthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
