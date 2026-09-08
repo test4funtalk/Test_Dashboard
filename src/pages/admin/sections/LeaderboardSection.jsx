@@ -72,10 +72,95 @@ const RANK_STYLES = [
   'bg-orange-100 text-orange-700',
 ];
 
+// A separate list from PERIODS (shared with Platform Stats, which has no
+// custom-range support) so "Custom Range" only shows up here.
+const HOST_PERIODS = [...PERIODS, { id: 'custom', label: 'Custom Range' }];
+
+// /api/admin/earnings has no startDate/endDate support at all — its period
+// param only recognizes today/thisWeek/thisMonth/allTime (see dateRangeIST
+// in Backend3/utils/istDate.js), and its summary tiles are hardcoded to
+// those four fixed windows regardless of the param. So a real custom range
+// is built here instead: page through /api/admin/calls (which does support
+// arbitrary startDate/endDate) and aggregate per-host cash + the same
+// platform-wide totals client-side, exactly like PlatformStatsTab's
+// fetchTreasury does for revenue/expense above.
+const fetchCustomRangeEarnings = async (startDate, endDate, motherTongue) => {
+  const byHost = new Map();
+  let coinsDeducted = 0, callCashEarned = 0, giftCoinsDeducted = 0, giftCashEarned = 0, calls = 0, totalSeconds = 0;
+
+  let page = 1, pages = 1;
+  while (page <= MAX_PAGES && page <= pages) {
+    const { data } = await api.get('/api/admin/calls', {
+      params: {
+        page, limit: PAGE_SIZE, status: 'ended',
+        startDate: new Date(startDate).toISOString(),
+        endDate: new Date(endDate + 'T23:59:59').toISOString(),
+      },
+    });
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    pages = data?.pagination?.pages ?? 1;
+
+    rows.forEach((call) => {
+      const cashEarned = call.billing?.totalCashEarned ?? 0;
+      const giftCash    = call.gifts?.totalGiftCash ?? 0;
+      coinsDeducted     += call.billing?.totalCoinsDeducted ?? 0;
+      callCashEarned    += cashEarned;
+      giftCoinsDeducted += call.gifts?.totalGiftCoins ?? 0;
+      giftCashEarned    += giftCash;
+      calls             += 1;
+      totalSeconds      += call.duration ?? 0;
+
+      const host = call.hostId;
+      const hostId = host?._id ?? host;
+      if (!hostId) return;
+      const entry = byHost.get(hostId) ?? {
+        _id: hostId,
+        host: typeof host === 'object' ? host : { _id: hostId, username: call.hostUsername, avatar: call.hostAvatar },
+        callCash: 0, giftCash: 0, totalCalls: 0, totalSeconds: 0,
+      };
+      entry.callCash      += cashEarned;
+      entry.giftCash      += giftCash;
+      entry.totalCalls    += 1;
+      entry.totalSeconds  += call.duration ?? 0;
+      byHost.set(hostId, entry);
+    });
+
+    if (rows.length === 0) break;
+    page++;
+  }
+
+  let topHosts = Array.from(byHost.values()).map((h) => ({ ...h, totalCash: h.callCash + h.giftCash }));
+  if (motherTongue) {
+    topHosts = topHosts.filter((h) => {
+      const mt = h.host?.motherTongue;
+      return Array.isArray(mt) ? mt.includes(motherTongue) : mt === motherTongue;
+    });
+  }
+  topHosts.sort((a, b) => b.totalCash - a.totalCash);
+
+  return {
+    earnings: {
+      custom: {
+        coinsDeducted,
+        callCashEarned,
+        giftCoinsDeducted,
+        giftCashEarned,
+        totalCoinsDeducted: coinsDeducted + giftCoinsDeducted,
+        totalCashEarned: callCashEarned + giftCashEarned,
+        calls,
+        totalSeconds,
+      },
+    },
+    topHosts,
+  };
+};
+
 const TopHostsTab = () => {
   const [period, setPeriod]             = useState('thisMonth');
   const [motherTongue, setMotherTongue] = useState('');
   const [languages, setLanguages]       = useState([]);
+  const [customFrom, setCustomFrom]     = useState('');
+  const [customTo,   setCustomTo]       = useState('');
 
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(false);
@@ -86,19 +171,25 @@ const TopHostsTab = () => {
   }, []);
 
   const fetchEarnings = useCallback(async () => {
+    if (period === 'custom' && (!customFrom || !customTo)) return;
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.get('/api/admin/earnings', {
-        params: { period, ...(motherTongue && { motherTongue }) },
-      });
-      setData(data?.data ?? null);
+      if (period === 'custom') {
+        const result = await fetchCustomRangeEarnings(customFrom, customTo, motherTongue);
+        setData(result);
+      } else {
+        const { data } = await api.get('/api/admin/earnings', {
+          params: { period, ...(motherTongue && { motherTongue }) },
+        });
+        setData(data?.data ?? null);
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load earnings');
     } finally {
       setLoading(false);
     }
-  }, [period, motherTongue]);
+  }, [period, motherTongue, customFrom, customTo]);
 
   useEffect(() => { fetchEarnings(); }, [fetchEarnings]);
 
@@ -123,11 +214,11 @@ const TopHostsTab = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
-            {PERIODS.map((p) => (
+          <div className="flex flex-wrap gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
+            {HOST_PERIODS.map((p) => (
               <button
                 key={p.id}
-                onClick={() => setPeriod(p.id)}
+                onClick={() => { setPeriod(p.id); if (p.id === 'custom') setData(null); }}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                   period === p.id ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:bg-neutral-200/60'
                 }`}
@@ -136,6 +227,26 @@ const TopHostsTab = () => {
               </button>
             ))}
           </div>
+
+          {period === 'custom' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || undefined}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              />
+              <span className="text-xs text-neutral-400">to</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+              />
+            </div>
+          )}
 
           <select
             value={motherTongue}
@@ -218,7 +329,12 @@ const TopHostsTab = () => {
           )}
         </div>
 
-        {loading && !data ? (
+        {period === 'custom' && (!customFrom || !customTo) ? (
+          <div className="py-16 text-center">
+            <Trophy size={36} className="mx-auto mb-3 text-neutral-200" />
+            <p className="text-sm font-medium text-neutral-400">Pick a start and end date above</p>
+          </div>
+        ) : loading && !data ? (
           <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
             <Loader2 size={20} className="animate-spin" /> Loading leaderboard…
           </div>
