@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Sparkles, Coins, Users, PhoneCall, MessageCircle, Clock,
   RefreshCw, AlertCircle, Loader2, Plus, Pencil, ToggleLeft, ToggleRight,
@@ -137,9 +137,9 @@ const StatCard = ({ label, value, Icon, loading, tint = 'text-neutral-900', capt
 
 const SECTION_TABS = [
   { id: 'overview',     label: 'Overview',       Icon: TrendingUp   },
-  { id: 'configure',    label: 'Configure Pack', Icon: Sparkles     },
   { id: 'hostProgress', label: 'Host Progress',  Icon: PhoneCall    },
   { id: 'purchases',    label: 'Redemptions',    Icon: CreditCard   },
+  { id: 'configure',    label: 'Configure Pack', Icon: Sparkles     },
 ];
 
 // ─── Overview tab ───────────────────────────────────────────────────────────────
@@ -148,6 +148,15 @@ const OverviewTab = () => {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
+
+  const [rows, setRows]             = useState([]);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 100, pages: 0 });
+  const [payLoading, setPayLoading] = useState(false);
+  const [payError, setPayError]     = useState(null);
+  const [page, setPage]             = useState(1);
+
+  const [totalAmount, setTotalAmount]     = useState(0);
+  const [amountLoading, setAmountLoading] = useState(false);
 
   const fetchOverview = useCallback(async () => {
     setLoading(true);
@@ -162,14 +171,71 @@ const OverviewTab = () => {
     }
   }, []);
 
+  const fetchSuccessPayments = useCallback(async (targetPage = 1) => {
+    setPayLoading(true);
+    setPayError(null);
+    try {
+      const params = { page: targetPage, limit: 100, isIntroPack: true, status: 'success' };
+      const { data } = await api.get('/api/purchase/admin/all', { params });
+      const list = Array.isArray(data?.data) ? data.data : [];
+      const pg   = data?.pagination ?? {};
+      setRows(list);
+      setPagination({
+        total: pg.total ?? list.length,
+        page:  pg.page  ?? targetPage,
+        limit: pg.limit ?? 100,
+        pages: pg.pages ?? Math.ceil((pg.total ?? list.length) / 100),
+      });
+    } catch (err) {
+      setPayError(err.response?.data?.message || 'Failed to load success payments');
+    } finally {
+      setPayLoading(false);
+    }
+  }, []);
+
+  // Paginates through every successful intro-pack payment to sum the true total —
+  // same approach as PurchasesTab's fetchAggStats (the table above only ever
+  // holds one page of rows, so summing `rows` would undercount).
+  const fetchTotalAmount = useCallback(async () => {
+    setAmountLoading(true);
+    try {
+      const baseParams = { limit: 100, isIntroPack: true, status: 'success' };
+      let curPage = 1;
+      let totalPages = 1;
+      let sum = 0;
+      const MAX_PAGES = 9999999;
+
+      do {
+        const { data } = await api.get('/api/purchase/admin/all', { params: { ...baseParams, page: curPage } });
+        const list = Array.isArray(data?.data) ? data.data : [];
+        const pg   = data?.pagination ?? {};
+        totalPages = pg.pages ?? 1;
+        list.forEach((r) => { sum += r.amount ?? 0; });
+        if (list.length === 0) break;
+        curPage++;
+      } while (curPage <= totalPages && curPage <= MAX_PAGES);
+
+      setTotalAmount(sum);
+    } catch {
+      // total silently stays at previous value on error
+    } finally {
+      setAmountLoading(false);
+    }
+  }, []);
+
   useEffect(() => { fetchOverview(); }, [fetchOverview]);
+  useEffect(() => { fetchSuccessPayments(page); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [fetchSuccessPayments]);
+  useEffect(() => { fetchTotalAmount(); }, [fetchTotalAmount]);
+
+  const onPage = (n) => { setPage(n); fetchSuccessPayments(n); };
+  const refreshAll = () => { fetchOverview(); fetchSuccessPayments(page); fetchTotalAmount(); };
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-neutral-400">The real cost of the intro-offer promo — coins issued vs. actually consumed.</p>
         <button
-          onClick={fetchOverview}
+          onClick={refreshAll}
           disabled={loading}
           className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800 disabled:opacity-40"
         >
@@ -191,6 +257,89 @@ const OverviewTab = () => {
         <StatCard label="Consumed by Chat"   value={fmtNum(data?.consumedByChat)}         Icon={MessageCircle} loading={loading && !data} caption="Intro coins spent on chat messages" />
         <StatCard label="Remaining (Active)" value={fmtNum(data?.remainingOnActivePacks)} Icon={Gauge}       loading={loading && !data} caption="Still sitting on active user wallets" tint="text-blue-600" />
         <StatCard label="Unused / Lapsed"    value={fmtNum(data?.unusedCoins)}            Icon={PackageX}    loading={loading && !data} caption="Issued, forfeited on recharge, never spent" tint="text-red-600" />
+      </div>
+
+      {/* Success payments */}
+      <div className="rounded-2xl border border-neutral-200 bg-white">
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+          <p className="text-sm font-semibold text-neutral-800">Success Payments</p>
+          <div className="flex flex-shrink-0 items-center gap-3">
+            <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-1.5">
+              <span className="relative flex h-2 w-2 flex-shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+              </span>
+              <IndianRupee size={14} className="text-green-600" />
+              <span className="text-sm font-semibold text-green-700">
+                {amountLoading ? <Loader2 size={14} className="animate-spin text-green-400" /> : fmtAmount(totalAmount)}
+              </span>
+            </div>
+            <button
+              onClick={() => { fetchSuccessPayments(page); fetchTotalAmount(); }}
+              disabled={payLoading}
+              className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800 disabled:opacity-40"
+            >
+              <RefreshCw size={13} className={payLoading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        {payError && (
+          <div className="flex items-center justify-between gap-3 border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:px-6">
+            <span className="flex items-center gap-2"><AlertCircle size={14} />{payError}</span>
+            <button onClick={() => fetchSuccessPayments(page)} className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-red-50">Retry</button>
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px]">
+            <thead>
+              <tr className="border-b border-neutral-100">
+                {['User', 'Coins', 'Amount', 'Date'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-50">
+              {payLoading && rows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-20 text-center">
+                    <Loader2 size={24} className="mx-auto animate-spin text-neutral-300" />
+                    <p className="mt-3 text-sm text-neutral-400">Loading success payments…</p>
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-20 text-center">
+                    <CreditCard size={36} className="mx-auto mb-3 text-neutral-200" />
+                    <p className="text-sm font-medium text-neutral-400">No successful intro-pack payments yet</p>
+                  </td>
+                </tr>
+              ) : (
+                rows.map((p) => {
+                  const user = typeof p.userId === 'object' && p.userId !== null ? p.userId : null;
+                  return (
+                    <tr key={p._id} className="hover:bg-neutral-50/70 transition-colors">
+                      <td className="px-4 py-3 sm:px-5">
+                        <p className="text-sm font-medium text-neutral-800">{p.username || user?.username || '—'}</p>
+                        <p className="text-xs text-neutral-400">{p.phone || user?.phone || '—'}</p>
+                      </td>
+                      <td className="px-4 py-3 sm:px-5">
+                        <div className="flex items-center gap-1 text-sm font-semibold text-amber-600">
+                          <Coins size={13} /> {fmtNum(p.coins)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm font-bold text-neutral-800 sm:px-5">{fmtAmount(p.amount)}</td>
+                      <td className="px-4 py-3 text-xs text-neutral-400 sm:px-5">{fmtDate(p.createdAt)}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <PaginationBar page={pagination.page} pages={pagination.pages} total={pagination.total} limit={pagination.limit} onPage={onPage} />
       </div>
     </div>
   );
@@ -536,8 +685,14 @@ const ConfigureTab = () => {
 // ─── Host Progress tab ──────────────────────────────────────────────────────────
 
 const HostProgressTab = () => {
+  const navigate = useNavigate();
+  const goToHostProfile = useCallback((id) => {
+    if (!id) return;
+    navigate(`/admindashboard?tab=users&usersTab=hosts&userId=${id}`);
+  }, [navigate]);
+
   const [rows, setRows]           = useState([]);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 0 });
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 100, pages: 0 });
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
 
@@ -563,7 +718,7 @@ const HostProgressTab = () => {
     setError(null);
     try {
       const params = {
-        page: targetPage, limit: 20,
+        page: targetPage, limit: 100,
         ...getPeriodParams(period, customFrom, customTo),
       };
       if (debouncedSearch) params.search = debouncedSearch;
@@ -574,8 +729,8 @@ const HostProgressTab = () => {
       setPagination({
         total: pg.total ?? list.length,
         page:  pg.page  ?? targetPage,
-        limit: pg.limit ?? 20,
-        pages: pg.pages ?? Math.ceil((pg.total ?? list.length) / 20),
+        limit: pg.limit ?? 100,
+        pages: pg.pages ?? Math.ceil((pg.total ?? list.length) / 100),
       });
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load host progress');
@@ -693,10 +848,16 @@ const HostProgressTab = () => {
               rows.map((r) => (
                 <tr key={r.hostId} className="hover:bg-neutral-50/70 transition-colors">
                   <td className="px-4 py-3 sm:px-5">
-                    <div className="flex items-center gap-2.5">
-                      <AvatarDisplay src={r.avatar} name={r.username} size="sm" />
+                    <div
+                      className="group flex cursor-pointer items-center gap-2.5"
+                      onClick={() => goToHostProfile(r.hostId)}
+                      title="View host profile"
+                    >
+                      <div className="flex-shrink-0 rounded-full transition group-hover:ring-2 group-hover:ring-neutral-900">
+                        <AvatarDisplay src={r.avatar} name={r.username} size="sm" />
+                      </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-neutral-900">{r.username || '—'}</p>
+                        <p className="truncate text-sm font-medium text-neutral-900 group-hover:underline">{r.username || '—'}</p>
                         <p className="truncate text-xs text-neutral-400">{r.phone || '—'}</p>
                       </div>
                     </div>
@@ -734,7 +895,7 @@ const PURCHASE_STATUS_FILTERS = [
 
 const PurchasesTab = () => {
   const [rows, setRows]             = useState([]);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 0 });
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 100, pages: 0 });
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState(null);
   const [status, setStatus]         = useState('success');
@@ -751,7 +912,7 @@ const PurchasesTab = () => {
     setError(null);
     try {
       const params = {
-        page: targetPage, limit: 20, isIntroPack: true,
+        page: targetPage, limit: 100, isIntroPack: true,
         ...getPeriodParams(period, customFrom, customTo),
       };
       if (status) params.status = status;
@@ -762,8 +923,8 @@ const PurchasesTab = () => {
       setPagination({
         total: pg.total ?? list.length,
         page:  pg.page  ?? targetPage,
-        limit: pg.limit ?? 20,
-        pages: pg.pages ?? Math.ceil((pg.total ?? list.length) / 20),
+        limit: pg.limit ?? 100,
+        pages: pg.pages ?? Math.ceil((pg.total ?? list.length) / 100),
       });
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load intro-pack redemptions');

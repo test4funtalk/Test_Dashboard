@@ -1870,10 +1870,20 @@ const WalletCard = ({ userId }) => {
 
 // ─── host wallet card (cash earnings balance) ──────────────────────────────────
 
+const CASH_PRESET_AMOUNTS = [100, 500, 1000, 5000, 10000];
+
 const HostWalletCard = ({ hostId }) => {
   const [wallet, setWallet]   = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
+
+  const [showAdjust, setShowAdjust]   = useState(false);
+  const [type, setType]               = useState('add');
+  const [amount, setAmount]           = useState('');
+  const [note, setNote]               = useState('');
+  const [adjusting, setAdjusting]     = useState(false);
+  const [adjustError, setAdjustError] = useState(null);
+  const [adjustSuccess, setAdjustSuccess] = useState(null);
 
   const loadWallet = useCallback(async () => {
     setLoading(true);
@@ -1890,18 +1900,68 @@ const HostWalletCard = ({ hostId }) => {
 
   useEffect(() => { loadWallet(); }, [loadWallet]);
 
+  const n            = parseFloat(amount) || 0;
+  const isAdd        = type === 'add';
+  const currentCash  = wallet?.cash ?? 0;
+  const newBalance   = isAdd ? currentCash + n : currentCash - n;
+  const willOverdraw = !isAdd && n > currentCash;
+
+  const submitAdjust = async () => {
+    if (!wallet) {
+      setAdjustError('Wallet not loaded yet');
+      return;
+    }
+    if (!n || n <= 0) {
+      setAdjustError('Enter a positive amount');
+      return;
+    }
+    setAdjusting(true);
+    setAdjustError(null);
+    setAdjustSuccess(null);
+    try {
+      const { data } = await api.post(`/api/admin/host-wallet/${hostId}/adjust`, {
+        type,
+        amount: n,
+        note: note.trim() || undefined,
+      });
+      const result = data?.data ?? {};
+      setWallet((prev) => ({ ...prev, ...result }));
+      setAdjustSuccess(data?.message ?? `Wallet ${isAdd ? 'credited' : 'deducted'} by ${fmtINR(n)}`);
+      setAmount(''); setNote('');
+    } catch (err) {
+      setAdjustError(err.response?.data?.message || 'Failed to adjust wallet');
+    } finally {
+      setAdjusting(false);
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Wallet</p>
-        <button
-          onClick={loadWallet}
-          disabled={loading}
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
-          title="Refresh wallet"
-        >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {wallet && (
+            <button
+              onClick={() => { setShowAdjust((v) => !v); setAdjustError(null); setAdjustSuccess(null); }}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                showAdjust
+                  ? 'border-neutral-900 bg-neutral-900 text-white'
+                  : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'
+              }`}
+            >
+              {showAdjust ? <X size={12} /> : <Pencil size={12} />}
+              Adjust Host Wallet
+            </button>
+          )}
+          <button
+            onClick={loadWallet}
+            disabled={loading}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
+            title="Refresh wallet"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       {loading && (
@@ -1942,6 +2002,90 @@ const HostWalletCard = ({ hostId }) => {
           </div>
           {wallet.lastTransactionAt && (
             <p className="mt-3 text-xs text-neutral-400">Last transaction: {fmtDateTime(wallet.lastTransactionAt)}</p>
+          )}
+
+          {/* manual correction */}
+          {showAdjust && (
+          <div className="mt-4 rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">Manual Correction</p>
+
+            <div className="mb-2 flex gap-1 rounded-xl border border-neutral-200 bg-white p-1">
+              {[{ id: 'add', label: 'Add', Icon: Plus }, { id: 'deduct', label: 'Deduct', Icon: Minus }].map(({ id, label, Icon }) => (
+                <button key={id} type="button"
+                  onClick={() => { setType(id); setAdjustError(null); }}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition ${
+                    type === id
+                      ? id === 'add' ? 'bg-green-600 text-white' : 'bg-red-500 text-white'
+                      : 'text-neutral-500 hover:bg-neutral-100'
+                  }`}>
+                  <Icon size={12} /> {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="relative">
+                <IndianRupee size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input
+                  type="number" min="0.01" step="0.01" placeholder="Amount"
+                  value={amount} onChange={(e) => { setAmount(e.target.value); setAdjustError(null); }}
+                  className="w-full rounded-lg border border-neutral-200 py-2 pl-7 pr-2 text-sm outline-none focus:border-neutral-400"
+                />
+              </div>
+              <input
+                placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)}
+                className="rounded-lg border border-neutral-200 px-2.5 py-2 text-sm outline-none focus:border-neutral-400 sm:col-span-2"
+              />
+            </div>
+
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {CASH_PRESET_AMOUNTS.map((p) => (
+                <button key={p} type="button"
+                  onClick={() => setAmount(String(p))}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                    amount === String(p)
+                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                      : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'
+                  }`}>
+                  {fmtINR(p)}
+                </button>
+              ))}
+            </div>
+
+            {n > 0 && (
+              <div className={`mt-2 flex items-center justify-between rounded-lg px-3 py-2 text-xs ${
+                willOverdraw ? 'border border-amber-200 bg-amber-50' : 'border border-neutral-200 bg-white'
+              }`}>
+                <span className="text-neutral-500">New balance after {isAdd ? 'add' : 'deduct'}</span>
+                <span className={`font-bold ${willOverdraw ? 'text-amber-600' : isAdd ? 'text-green-700' : 'text-neutral-800'}`}>
+                  {fmtINR(newBalance)}
+                </span>
+              </div>
+            )}
+            {willOverdraw && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600">
+                <AlertCircle size={11} /> This will take the wallet balance below zero.
+              </p>
+            )}
+
+            {adjustError && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={12} /> {adjustError}</p>
+            )}
+            {adjustSuccess && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-green-600"><Check size={12} /> {adjustSuccess}</p>
+            )}
+
+            <button
+              onClick={submitAdjust}
+              disabled={adjusting}
+              className={`mt-2 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-50 ${
+                isAdd ? 'bg-green-600 hover:bg-green-700' : 'bg-red-500 hover:bg-red-600'
+              }`}
+            >
+              {adjusting ? <Loader2 size={13} className="animate-spin" /> : (isAdd ? <Plus size={13} /> : <Minus size={13} />)}
+              Confirm {isAdd ? 'Add' : 'Deduct'}
+            </button>
+          </div>
           )}
         </>
       )}
