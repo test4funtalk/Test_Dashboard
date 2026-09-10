@@ -9,7 +9,7 @@ import {
   PhoneCall, Wallet, TrendingUp, TrendingDown, Minus, Plus,
   Copy, Check, Receipt, Package, IndianRupee,
   IdCard, Banknote, Landmark, ExternalLink, ImageOff, Ban, CreditCard,
-  PhoneOff, PhoneMissed, Upload, Tag,
+  PhoneOff, PhoneMissed, Upload, Tag, MessageSquare,
 } from 'lucide-react';
 import {
   fetchUsers, updateUser, deleteUser,
@@ -21,6 +21,7 @@ import { TableRowsSkeleton } from '../../../components/ui/Skeleton';
 import { getLanguages } from '../../../services/languageService';
 import api from '../../../services/api';
 import CallDetailModal from './CallDetailModal';
+import ChatConversationDetail from './ChatConversationDetail';
 
 // ─── tiny helpers ─────────────────────────────────────────────────────────────
 
@@ -78,6 +79,24 @@ const BILLING_TYPE_STYLES = {
 };
 
 const BILLING_TYPE_LABELS = { intro: 'Intro Pack', mixed: 'Mixed', billed: 'Billed', none: 'None' };
+
+// Matches parseGiftText/computeChatBillingType in ChatManagementSection.jsx exactly.
+const parseGiftText = (text) => {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed?.kind === 'chat_gift_v1') return parsed;
+  } catch { /* not gift JSON */ }
+  return null;
+};
+
+const computeChatBillingType = ({ introMessageCount, billedMessageCount }) => {
+  const intro  = introMessageCount ?? 0;
+  const billed = billedMessageCount ?? 0;
+  if (intro > 0 && billed > 0) return 'mixed';
+  if (intro > 0) return 'intro';
+  if (billed > 0) return 'billed';
+  return 'none';
+};
 
 const SORT_OPTIONS = [
   { value: '-createdAt', label: 'Newest first' },
@@ -1006,6 +1025,229 @@ const CallHistoryCard = ({ userId, role, selfInfo }) => {
       )}
       </div>
     </>
+  );
+};
+
+
+// ─── chat history card ────────────────────────────────────────────────────────
+
+const ChatHistoryCard = ({ userId, role }) => {
+  const isHost = role === 'host';
+
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+  const [page, setPage]       = useState(1);
+  const [pages, setPages]     = useState(1);
+  const [total, setTotal]     = useState(0);
+  const [thread, setThread]   = useState(null); // { userId, hostId, userInfo, hostInfo }
+
+  const fetchConversations = useCallback(async (targetPage) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/api/admin/chat-conversations', {
+        params: {
+          page: targetPage,
+          limit: 20,
+          ...(isHost ? { hostId: userId } : { userId }),
+        },
+      });
+      const result = data?.data ?? {};
+      const list = Array.isArray(result.items) ? result.items : [];
+      setConversations(list);
+      setTotal(result.total ?? 0);
+      setPages(Math.max(1, Math.ceil((result.total ?? 0) / (result.limit || 20))));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load chat history');
+    } finally {
+      setLoading(false);
+    }
+  }, [isHost, userId]);
+
+  useEffect(() => { fetchConversations(page); }, [fetchConversations, page]);
+
+  const openThread = (row) => {
+    setThread({
+      userId: row.userId,
+      hostId: row.hostId,
+      userInfo: { username: row.userUsername, avatar: row.userAvatar, phone: row.userPhone },
+      hostInfo: { username: row.hostUsername, avatar: row.hostAvatar, phone: row.hostPhone },
+    });
+  };
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white sm:col-span-2">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-center gap-2">
+          <MessageSquare size={15} className="text-neutral-400" />
+          <p className="text-sm font-semibold text-neutral-800">Chat History</p>
+          {total > 0 && (
+            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">{total}</span>
+          )}
+        </div>
+        <button
+          onClick={() => fetchConversations(page)}
+          className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
+
+      {/* Body */}
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+          <Loader2 size={20} className="animate-spin" /> Loading conversations…
+        </div>
+      ) : error ? (
+        <div className="m-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+          <AlertCircle size={14} /> {error}
+        </div>
+      ) : conversations.length === 0 ? (
+        <div className="py-16 text-center">
+          <MessageSquare size={36} className="mx-auto mb-3 text-neutral-200" />
+          <p className="text-sm font-medium text-neutral-400">No chat conversations yet</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1280px] border-collapse text-sm">
+            <thead>
+              <tr className="bg-neutral-50">
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-10">#</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">{isHost ? 'User' : 'Host'}</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Billing</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Last Message</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Messages</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Gifts</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 w-24">Gift Cash</th>
+                <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Last Activity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {conversations.map((row, index) => {
+                const partner = isHost
+                  ? { username: row.userUsername, avatar: row.userAvatar, phone: row.userPhone }
+                  : { username: row.hostUsername, avatar: row.hostAvatar, phone: row.hostPhone };
+                const gift = row.lastMessageKind === 'gift' ? parseGiftText(row.lastMessageText) : null;
+                const billingType = computeChatBillingType(row);
+                return (
+                  <tr
+                    key={`${row.userId}_${row.hostId}`}
+                    onClick={() => openThread(row)}
+                    className="cursor-pointer transition-colors hover:bg-neutral-50"
+                    title="Open full conversation"
+                  >
+                    <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-400">
+                      {(page - 1) * 20 + index + 1}
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <AvatarDisplay src={partner.avatar} name={partner.username} size="sm" />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-neutral-900">{partner.username || '(deleted)'}</p>
+                          {partner.phone && <p className="truncate text-xs text-neutral-400">{partner.phone}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${BILLING_TYPE_STYLES[billingType]}`}>
+                        {(billingType === 'intro' || billingType === 'mixed') && <Gift size={10} />}
+                        {BILLING_TYPE_LABELS[billingType]}
+                      </span>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 w-[220px] max-w-[220px]">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {gift ? (
+                          <span className="flex min-w-0 items-center gap-1.5 truncate text-xs font-medium text-pink-700">
+                            <span className="flex-shrink-0 text-base">{gift.icon}</span>
+                            <span className="truncate">{gift.name}</span>
+                          </span>
+                        ) : (
+                          <span className="min-w-0 flex-1 truncate text-xs text-neutral-700" title={row.lastMessageText}>
+                            {row.lastMessageText || '—'}
+                          </span>
+                        )}
+                        {row.lastMessageDeleted && (
+                          <span className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-500">
+                            <Ban size={9} /> deleted
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap text-xs font-semibold text-neutral-700">
+                      {fmtNum(row.messageCount)}
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {row.totalCoins
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-amber-600"><Coins size={11} />{row.totalCoins}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {row.totalCash
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{row.totalCash}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {row.gifts?.totalGiftCoins
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-pink-600"><Gift size={11} />{row.gifts.totalGiftCoins}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
+                      {row.gifts?.totalGiftCash
+                        ? <span className="flex items-center gap-1 text-xs font-semibold text-green-600"><span className="font-bold">₹</span>{row.gifts.totalGiftCash}</span>
+                        : <span className="text-xs text-neutral-300">—</span>
+                      }
+                    </td>
+                    <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
+                      {fmtDateTime(row.lastMessageAt)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {thread && (
+        <ChatConversationDetail
+          userId={thread.userId}
+          hostId={thread.hostId}
+          userInfo={thread.userInfo}
+          hostInfo={thread.hostInfo}
+          onClose={() => setThread(null)}
+        />
+      )}
+
+      {!loading && !error && pages > 1 && (
+        <div className="flex items-center justify-between border-t border-neutral-100 px-5 py-3">
+          <p className="text-xs text-neutral-400">Page {page} of {pages}</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-xs text-neutral-500">{page} / {pages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+              disabled={page >= pages}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -2708,11 +2950,13 @@ const HostKycDetailsCard = ({ userId }) => {
 const USER_DETAIL_TABS = [
   { id: 'payments', label: 'Payments', Icon: Receipt  },
   { id: 'calls',    label: 'Calls',    Icon: PhoneCall },
+  { id: 'chat',     label: 'Chat',     Icon: MessageSquare },
 ];
 
 const HOST_DETAIL_TABS = [
   { id: 'wallet',     label: 'Wallet',      Icon: Wallet  },
   { id: 'calls',      label: 'Calls',       Icon: PhoneCall },
+  { id: 'chat',       label: 'Chat',        Icon: MessageSquare },
   { id: 'kyc',        label: 'KYC Details', Icon: IdCard  },
   { id: 'onlineTime', label: 'Online Time', Icon: Clock   },
 ];
@@ -2956,6 +3200,10 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
             <div className="p-4 sm:p-5">
               <HostOnlineTimeCard hostId={user._id} />
             </div>
+          ) : dtab === 'chat' ? (
+            <div className="p-4 sm:p-5">
+              <ChatHistoryCard userId={user._id} role="host" />
+            </div>
           ) : (
             <CallHistoryCard userId={user._id} role="host" selfInfo={user} />
           )
@@ -2963,6 +3211,10 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
           dtab === 'payments' ? (
             <div className="space-y-4 p-4 sm:p-5">
               <PaymentHistoryCard userId={user._id} />
+            </div>
+          ) : dtab === 'chat' ? (
+            <div className="p-4 sm:p-5">
+              <ChatHistoryCard userId={user._id} role="user" />
             </div>
           ) : (
             <CallHistoryCard userId={user._id} role="user" selfInfo={user} />

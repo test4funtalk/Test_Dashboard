@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, Coins, Users, PhoneCall, MessageCircle, Clock,
   RefreshCw, AlertCircle, Loader2, Plus, Pencil, ToggleLeft, ToggleRight,
   CheckCircle, X, Search, ChevronLeft, ChevronRight, TrendingUp,
-  PackageX, Gauge, CreditCard,
+  PackageX, Gauge, CreditCard, IndianRupee, XCircle, Hourglass,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import api from '../../../services/api';
@@ -34,6 +35,39 @@ const STATUS_STYLES = {
   pending:  'bg-amber-100  text-amber-700  border-amber-200',
   failed:   'bg-red-100    text-red-700    border-red-200',
   refunded: 'bg-blue-100   text-blue-700   border-blue-200',
+};
+
+// Same preset list/behavior as PaymentManagementSection's period filter — kept
+// local since this codebase duplicates it per-section rather than sharing one.
+const PERIOD_FILTERS = [
+  { id: 'all',       label: 'All Time'     },
+  { id: 'today',     label: 'Today'        },
+  { id: 'yesterday', label: 'Yesterday'    },
+  { id: 'thisWeek',  label: 'This Week'    },
+  { id: 'thisMonth', label: 'This Month'   },
+  { id: 'custom',    label: 'Custom Range' },
+];
+
+const getPeriodParams = (period, from, to) => {
+  if (!period || period === 'all') return {};
+  if (period === 'custom') {
+    const params = {};
+    if (from) params.startDate = new Date(from).toISOString();
+    if (to)   params.endDate   = new Date(to + 'T23:59:59').toISOString();
+    return params;
+  }
+  const now        = new Date();
+  const dayMs      = 86400000;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === 'today')
+    return { startDate: todayStart.toISOString(), endDate: new Date(todayStart.getTime() + dayMs - 1).toISOString() };
+  if (period === 'yesterday')
+    return { startDate: new Date(todayStart.getTime() - dayMs).toISOString(), endDate: new Date(todayStart.getTime() - 1).toISOString() };
+  if (period === 'thisWeek')
+    return { startDate: new Date(todayStart.getTime() - todayStart.getDay() * dayMs).toISOString(), endDate: now.toISOString() };
+  if (period === 'thisMonth')
+    return { startDate: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(), endDate: now.toISOString() };
+  return {};
 };
 
 const StatusBadge = ({ status }) => {
@@ -510,6 +544,9 @@ const HostProgressTab = () => {
   const [page, setPage]     = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [period,     setPeriod]     = useState('today');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo,   setCustomTo]   = useState('');
 
   const debounceRef = useRef(null);
   useEffect(() => {
@@ -525,7 +562,10 @@ const HostProgressTab = () => {
     setLoading(true);
     setError(null);
     try {
-      const params = { page: targetPage, limit: 20 };
+      const params = {
+        page: targetPage, limit: 20,
+        ...getPeriodParams(period, customFrom, customTo),
+      };
       if (debouncedSearch) params.search = debouncedSearch;
       const { data } = await api.get('/api/admin/intro-pack/host-progress', { params });
       const list = Array.isArray(data?.data) ? data.data : [];
@@ -542,7 +582,7 @@ const HostProgressTab = () => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch]);
+  }, [debouncedSearch, period, customFrom, customTo]);
 
   useEffect(() => { fetchProgress(page); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [fetchProgress]);
 
@@ -550,24 +590,71 @@ const HostProgressTab = () => {
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white">
-      <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-          <input
-            type="text"
-            placeholder="Search by host username…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
-          />
+      <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4 space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Search by host username…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-neutral-400"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              value={period}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPeriod(val);
+                setPage(1);
+                if (val !== 'custom') { setCustomFrom(''); setCustomTo(''); }
+              }}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+            >
+              {PERIOD_FILTERS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+
+            <button
+              onClick={() => fetchProgress(page)}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800 disabled:opacity-40"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => fetchProgress(page)}
-          disabled={loading}
-          className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800 disabled:opacity-40"
-        >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+
+        {/* Custom date range — visible only when Custom Range is selected */}
+        {period === 'custom' && (
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || undefined}
+              onChange={(e) => { setCustomFrom(e.target.value); setPage(1); }}
+              className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+            />
+            <span className="text-xs text-neutral-400">→</span>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom || undefined}
+              onChange={(e) => { setCustomTo(e.target.value); setPage(1); }}
+              className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+            />
+            {(customFrom || customTo) && (
+              <button
+                onClick={() => { setCustomFrom(''); setCustomTo(''); setPage(1); }}
+                className="text-xs text-neutral-400 hover:text-neutral-700 underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -650,14 +737,23 @@ const PurchasesTab = () => {
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 0 });
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState(null);
-  const [status, setStatus]         = useState('');
+  const [status, setStatus]         = useState('success');
   const [page, setPage]             = useState(1);
+  const [period,     setPeriod]     = useState('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo,   setCustomTo]   = useState('');
+
+  const [aggStats, setAggStats] = useState({ total: 0, successCount: 0, pendingCount: 0, failedCount: 0, totalAmount: 0 });
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const fetchPurchases = useCallback(async (targetPage = 1) => {
     setLoading(true);
     setError(null);
     try {
-      const params = { page: targetPage, limit: 20, isIntroPack: true };
+      const params = {
+        page: targetPage, limit: 20, isIntroPack: true,
+        ...getPeriodParams(period, customFrom, customTo),
+      };
       if (status) params.status = status;
       const { data } = await api.get('/api/purchase/admin/all', { params });
       const list = Array.isArray(data?.data) ? data.data : [];
@@ -674,7 +770,53 @@ const PurchasesTab = () => {
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, period, customFrom, customTo]);
+
+  // Paginates through every filtered record to compute accurate totals — same
+  // approach as PaymentManagementSection's fetchAggStats.
+  const fetchAggStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const baseParams = {
+        limit: 100, isIntroPack: true,
+        ...getPeriodParams(period, customFrom, customTo),
+      };
+      if (status) baseParams.status = status;
+
+      let curPage = 1;
+      let totalPages = 1;
+      let total = 0;
+      let totalAmount = 0;
+      let successCount = 0;
+      let pendingCount = 0;
+      let failedCount  = 0;
+      const MAX_PAGES = 9999999;
+
+      do {
+        const { data } = await api.get('/api/purchase/admin/all', { params: { ...baseParams, page: curPage } });
+        const list = Array.isArray(data?.data) ? data.data : [];
+        const pg   = data?.pagination ?? {};
+        totalPages = pg.pages ?? 1;
+        total      = pg.total ?? total + list.length;
+
+        list.forEach((r) => {
+          totalAmount += r.amount ?? 0;
+          if (r.status === 'success') successCount++;
+          else if (r.status === 'pending') pendingCount++;
+          else if (r.status === 'failed')  failedCount++;
+        });
+
+        if (list.length === 0) break;
+        curPage++;
+      } while (curPage <= totalPages && curPage <= MAX_PAGES);
+
+      setAggStats({ total, successCount, pendingCount, failedCount, totalAmount });
+    } catch {
+      // stats silently stay at previous values on error
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [status, period, customFrom, customTo]);
 
   // Single effect keyed off fetchPurchases' identity: it changes whenever
   // `status` changes, which re-runs this with the fresh filter. Status
@@ -682,33 +824,91 @@ const PurchasesTab = () => {
   // is already committed by the time this fires — one fetch per change,
   // not two. Same pattern as PaymentManagementSection.
   useEffect(() => { fetchPurchases(page); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [fetchPurchases]);
+  useEffect(() => { fetchAggStats(); }, [fetchAggStats]);
 
   const onStatusClick = (val) => { setStatus(val); setPage(1); };
   const onPage = (n) => { setPage(n); fetchPurchases(n); };
 
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white">
-      <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {PURCHASE_STATUS_FILTERS.map(({ value, label }) => (
-            <button
-              key={value || 'all'}
-              onClick={() => onStatusClick(value)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                status === value ? 'bg-neutral-900 text-white' : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
-              }`}
+    <div className="space-y-4 sm:space-y-6">
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
+        <StatCard label="Total"   value={statsLoading ? '—' : fmtNum(aggStats.total)}         Icon={CreditCard} loading={statsLoading && aggStats.total === 0} />
+        <StatCard label="Success" value={statsLoading ? '—' : fmtNum(aggStats.successCount)}  Icon={CheckCircle} loading={statsLoading && aggStats.total === 0} tint="text-green-600" />
+        <StatCard label="Pending" value={statsLoading ? '—' : fmtNum(aggStats.pendingCount)}  Icon={Hourglass}  loading={statsLoading && aggStats.total === 0} tint="text-amber-600" />
+        <StatCard label="Failed"  value={statsLoading ? '—' : fmtNum(aggStats.failedCount)}   Icon={XCircle}    loading={statsLoading && aggStats.total === 0} tint="text-red-600" />
+        <StatCard label="Amount"  value={statsLoading ? '—' : fmtAmount(aggStats.totalAmount)} Icon={IndianRupee} loading={statsLoading && aggStats.total === 0} />
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white">
+      <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {PURCHASE_STATUS_FILTERS.map(({ value, label }) => (
+              <button
+                key={value || 'all'}
+                onClick={() => onStatusClick(value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  status === value ? 'bg-neutral-900 text-white' : 'border border-neutral-200 text-neutral-600 hover:border-neutral-400'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              value={period}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPeriod(val);
+                setPage(1);
+                if (val !== 'custom') { setCustomFrom(''); setCustomTo(''); }
+              }}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
             >
-              {label}
+              {PERIOD_FILTERS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+
+            <button
+              onClick={() => { fetchPurchases(page); fetchAggStats(); }}
+              disabled={loading}
+              className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800 disabled:opacity-40"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
             </button>
-          ))}
+          </div>
         </div>
-        <button
-          onClick={() => fetchPurchases(page)}
-          disabled={loading}
-          className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800 disabled:opacity-40"
-        >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+
+        {/* Custom date range — visible only when Custom Range is selected */}
+        {period === 'custom' && (
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || undefined}
+              onChange={(e) => { setCustomFrom(e.target.value); setPage(1); }}
+              className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+            />
+            <span className="text-xs text-neutral-400">→</span>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom || undefined}
+              onChange={(e) => { setCustomTo(e.target.value); setPage(1); }}
+              className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+            />
+            {(customFrom || customTo) && (
+              <button
+                onClick={() => { setCustomFrom(''); setCustomTo(''); setPage(1); }}
+                className="text-xs text-neutral-400 hover:text-neutral-700 underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -768,14 +968,29 @@ const PurchasesTab = () => {
       </div>
 
       <PaginationBar page={pagination.page} pages={pagination.pages} total={pagination.total} limit={pagination.limit} onPage={onPage} />
+      </div>
     </div>
   );
 };
 
 // ─── main section ─────────────────────────────────────────────────────────────
 
+const VALID_INTRO_TABS = new Set(SECTION_TABS.map((t) => t.id));
+
+// A distinct search-param key from other sections' own sub-tab keys (e.g.
+// ChatManagementSection's `chatTab`) — reusing one would leak state between
+// sections when an admin switches between them.
 const IntroPackManagementSection = () => {
-  const [tab, setTab] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = VALID_INTRO_TABS.has(searchParams.get('introTab')) ? searchParams.get('introTab') : 'overview';
+
+  const setTab = (id) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (id === 'overview') p.delete('introTab'); else p.set('introTab', id);
+      return p;
+    }, { replace: true });
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
