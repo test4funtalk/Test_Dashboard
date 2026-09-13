@@ -9,7 +9,7 @@ import {
   PhoneCall, Wallet, TrendingUp, TrendingDown, Minus, Plus,
   Copy, Check, Receipt, Package, IndianRupee,
   IdCard, Banknote, Landmark, ExternalLink, ImageOff, Ban, CreditCard,
-  PhoneOff, PhoneMissed, Upload, Tag, MessageSquare,
+  PhoneOff, PhoneMissed, Upload, Tag, MessageSquare, Mail, KeyRound,
 } from 'lucide-react';
 import {
   fetchUsers, updateUser, deleteUser,
@@ -3187,7 +3187,7 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
             <AvatarDisplay src={user.avatar} name={user.username} size="xl" />
             <div className="min-w-0">
               <h2 className="text-xl font-bold leading-tight">{user.username || '—'}</h2>
-              <p className="text-sm text-neutral-400">{user.phone || 'No phone'}</p>
+              <p className="text-sm text-neutral-400">{user.phone || 'No phone'}{user.email ? ` · ${user.email}` : ''}</p>
               {/* Copyable User ID */}
               <button
                 onClick={copyId}
@@ -3207,6 +3207,11 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
                 {user.isVerified && (
                   <span className="flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                     <ShieldCheck size={10} /> Verified
+                  </span>
+                )}
+                {user.googleId && (
+                  <span className="flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-600">
+                    <KeyRound size={10} /> Google
                   </span>
                 )}
                 {isHostDetail && (
@@ -3283,6 +3288,12 @@ const UserDetailPage = ({ user, activeTab, dtab, onDtab, onBack, onEdit, onDelet
         <div className="rounded-2xl border border-neutral-200 bg-white p-5">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">Account</p>
           <InfoRow icon={Phone}       label="Phone"   value={user.phone || '—'} />
+          <InfoRow icon={Mail}       label="Email"   value={user.email || '—'} />
+          <InfoRow icon={KeyRound}     label="Sign-in Method" value={
+            user.googleId
+              ? <span className="flex items-center gap-1 text-neutral-700">Google <span className="font-mono text-xs text-neutral-400">({user.googleId})</span></span>
+              : 'Phone / OTP'
+          } />
           <InfoRow icon={ShieldCheck} label="Verified" value={
             user.isVerified
               ? <span className="text-blue-600 font-medium">Yes</span>
