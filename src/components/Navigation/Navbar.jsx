@@ -18,7 +18,7 @@ const Navbar = () => {
         </div>
 
         {/* Right Side */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 g">
           <button className="group relative flex h-12 w-12 items-center justify-center rounded-2xl border border-neutral-200 bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
             <Bell size={18} className="transition-transform duration-300 group-hover:scale-110" />
             <span className="absolute right-3 top-3 h-2 w-2 rounded-full bg-red-500" />
