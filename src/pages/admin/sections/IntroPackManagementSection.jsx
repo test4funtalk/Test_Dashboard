@@ -823,7 +823,7 @@ const HostProgressTab = () => {
         <table className="w-full min-w-[720px]">
           <thead>
             <tr className="border-b border-neutral-100">
-              {['Host', 'Minutes Served', 'Calls Served', 'Letters Served', 'Messages Served'].map((h) => (
+              {['Host', 'Minutes Served', 'Calls Served', 'Messages Served'].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:px-5">{h}</th>
               ))}
             </tr>
@@ -831,14 +831,14 @@ const HostProgressTab = () => {
           <tbody className="divide-y divide-neutral-50">
             {loading && rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-20 text-center">
+                <td colSpan={4} className="py-20 text-center">
                   <Loader2 size={24} className="mx-auto animate-spin text-neutral-300" />
                   <p className="mt-3 text-sm text-neutral-400">Loading host progress…</p>
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-20 text-center">
+                <td colSpan={4} className="py-20 text-center">
                   <PhoneCall size={36} className="mx-auto mb-3 text-neutral-200" />
                   <p className="text-sm font-medium text-neutral-400">No intro-pack activity yet</p>
                   <p className="mt-1 text-xs text-neutral-300">Hosts will appear here once an intro-pack call or message is billed</p>
@@ -869,7 +869,6 @@ const HostProgressTab = () => {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-neutral-600 sm:px-5">{fmtNum(r.callsServed)}</td>
-                  <td className="px-4 py-3 text-sm text-neutral-600 sm:px-5">{fmtNum(r.lettersServed)}</td>
                   <td className="px-4 py-3 text-sm text-neutral-600 sm:px-5">{fmtNum(r.messagesServed)}</td>
                 </tr>
               ))

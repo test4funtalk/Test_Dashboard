@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.support4funtalk.com';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.test4funtalk.site';
 
 let _cache = null;
 

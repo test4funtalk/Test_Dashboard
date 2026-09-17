@@ -409,30 +409,30 @@ const ChatConversationsTab = () => {
 
 // ─── chat config tab ────────────────────────────────────────────────────────────
 
-// Billed per letter (character), not per message — e.g. "apple" (5 letters)
-// at coinsPerLetter:1 costs 5 coins. See chatController.sendChatMessage.
+// Billed per message, a flat rate regardless of length — e.g. at
+// coinsPerMessage:1 every message costs 1 coin. See chatController.sendChatMessage.
 const CONFIG_FIELDS = [
   {
-    key: 'coinsPerLetter',
-    label: 'Coins / Letter',
-    desc: 'Coins deducted from the sending user per character in the message (e.g. "apple" = 5 letters -> 5 coins at a rate of 1)',
+    key: 'coinsPerMessage',
+    label: 'Coins / Message',
+    desc: 'Coins deducted from the sending user for each message sent, regardless of length',
     unit: 'coins',
   },
   {
-    key: 'cashPerLetter',
-    label: 'Cash / Letter',
-    desc: 'Cash (₹) credited to the receiving host per character of every message received',
+    key: 'cashPerMessage',
+    label: 'Cash / Message',
+    desc: 'Cash (₹) credited to the receiving host for each message received, regardless of length',
     unit: '₹',
   },
 ];
 
-const EMPTY_CONFIG = { coinsPerLetter: '', cashPerLetter: '' };
+const EMPTY_CONFIG = { coinsPerMessage: '', cashPerMessage: '' };
 
 const applyConfig = (cfg, setConfig, setForm) => {
   setConfig(cfg);
   setForm({
-    coinsPerLetter: cfg.coinsPerLetter ?? '',
-    cashPerLetter:  cfg.cashPerLetter  ?? '',
+    coinsPerMessage: cfg.coinsPerMessage ?? '',
+    cashPerMessage:  cfg.cashPerMessage  ?? '',
   });
 };
 
