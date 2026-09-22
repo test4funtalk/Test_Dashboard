@@ -4,6 +4,7 @@ import {
   Search, RefreshCw, AlertCircle, Loader2,
   ChevronLeft, ChevronRight, Coins, Settings, CheckCircle,
   Save, Ban, Users, Gift, Wallet,
+  CalendarDays, CalendarRange, Calendar,
 } from 'lucide-react';
 import AvatarDisplay from '../../../components/ui/AvatarDisplay';
 import ChatConversationDetail from './ChatConversationDetail';
@@ -111,6 +112,47 @@ const SECTION_TABS = [
   { id: 'config',        label: 'Chat Config',   Icon: Settings },
 ];
 
+// Matches the period buckets accepted by GET /api/admin/chat-conversations
+// (adminController.listChatConversations, same shape as applyCallDateFilter).
+const PERIOD_OPTIONS = [
+  { value: '',          label: 'All Time'     },
+  { value: 'today',     label: 'Today'        },
+  { value: 'yesterday', label: 'Yesterday'    },
+  { value: 'thisWeek',  label: 'This Week'    },
+  { value: 'thisMonth', label: 'This Month'   },
+  { value: 'custom',    label: 'Custom Range' },
+];
+
+const EMPTY_STATS_TILE = { messageCount: 0, coinsDeducted: 0, cashEarned: 0, giftCoinsDeducted: 0, giftCashEarned: 0, totalCoinsDeducted: 0, totalCashEarned: 0 };
+
+// One tile per period bucket — coins deducted (message + gift) and cash earned
+// (message + gift) side by side, matching the `stats` shape the backend always
+// returns (today/thisWeek/thisMonth, plus `custom` when a custom range is set).
+const StatPeriodCard = ({ label, Icon, data = EMPTY_STATS_TILE }) => (
+  <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+    <div className="flex items-center gap-2">
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
+        <Icon size={14} />
+      </div>
+      <span className="text-sm font-medium text-neutral-700">{label}</span>
+    </div>
+    <div className="mt-3 flex items-center justify-between gap-3">
+      <div>
+        <p className="flex items-center gap-1 text-lg font-bold text-amber-600">
+          <Coins size={14} />{fmtNum(data.totalCoinsDeducted)}
+        </p>
+        <p className="text-[11px] text-neutral-400">Coins Deducted</p>
+      </div>
+      <div className="text-right">
+        <p className="flex items-center justify-end gap-1 text-lg font-bold text-green-600">
+          <span className="font-bold">₹</span>{fmtNum(data.totalCashEarned)}
+        </p>
+        <p className="text-[11px] text-neutral-400">Cash Earned</p>
+      </div>
+    </div>
+  </div>
+);
+
 // ─── conversations (grouped by host<->user pair) tab ──────────────────────────
 
 const ChatConversationsTab = () => {
@@ -121,10 +163,14 @@ const ChatConversationsTab = () => {
   const [hostId, setHostId]   = useState('');
   const [userId, setUserId]   = useState('');
   const [search, setSearch]   = useState('');
+  const [period, setPeriod]   = useState('');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo,   setCustomTo]   = useState('');
 
   const [page, setPage]   = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState(null); // { today, thisWeek, thisMonth, custom? }
 
   const [selected, setSelected] = useState(null); // { userId, hostId, userInfo, hostInfo }
 
@@ -138,26 +184,41 @@ const ChatConversationsTab = () => {
           ...(hostId.trim() && { hostId: hostId.trim() }),
           ...(userId.trim() && { userId: userId.trim() }),
           ...(search.trim() && { search: search.trim() }),
+          ...(period && period !== 'custom' && { period }),
+          ...(period === 'custom' && customFrom && { startDate: new Date(customFrom).toISOString() }),
+          ...(period === 'custom' && customTo   && { endDate: new Date(customTo + 'T23:59:59').toISOString() }),
         },
       });
       const result = data?.data ?? {};
       setItems(Array.isArray(result.items) ? result.items : []);
       setTotal(result.total ?? 0);
       setPages(Math.max(1, Math.ceil((result.total ?? 0) / (result.limit || 20))));
+      setStats(data?.stats ?? null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load conversations');
     } finally {
       setLoading(false);
     }
-  }, [page, hostId, userId, search]);
+  }, [page, hostId, userId, search, period, customFrom, customTo]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
 
   const onFilterChange = (setter) => (e) => { setter(e.target.value); setPage(1); };
 
-  const clearFilters = () => { setHostId(''); setUserId(''); setSearch(''); setPage(1); };
+  const onPeriodChange = (e) => {
+    const value = e.target.value;
+    setPeriod(value);
+    setPage(1);
+    if (value !== 'custom') { setCustomFrom(''); setCustomTo(''); }
+  };
 
-  const hasFilters = hostId || userId || search;
+  const clearFilters = () => {
+    setHostId(''); setUserId(''); setSearch('');
+    setPeriod(''); setCustomFrom(''); setCustomTo('');
+    setPage(1);
+  };
+
+  const hasFilters = hostId || userId || search || period;
 
   const pageNumbers = () => {
     if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
@@ -177,6 +238,19 @@ const ChatConversationsTab = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+
+      {/* Coins-deducted / cash-earned tiles — today/thisWeek/thisMonth always
+          shown, `custom` appears once a custom range is applied. Independent
+          of the list's own period filter (see backend `stats` comment). */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+        <StatPeriodCard label="Today"      Icon={CalendarDays}  data={stats?.today} />
+        <StatPeriodCard label="This Week"  Icon={CalendarRange} data={stats?.thisWeek} />
+        <StatPeriodCard label="This Month" Icon={Calendar}      data={stats?.thisMonth} />
+        {stats?.custom && (
+          <StatPeriodCard label="Custom Range" Icon={CalendarRange} data={stats.custom} />
+        )}
+      </div>
+
       <div className="rounded-2xl border border-neutral-200 bg-white">
 
         {/* Toolbar */}
@@ -206,6 +280,13 @@ const ChatConversationsTab = () => {
               onChange={onFilterChange(setUserId)}
               className="w-44 rounded-xl border border-neutral-200 px-3 py-2 text-xs outline-none focus:border-neutral-400"
             />
+            <select
+              value={period}
+              onChange={onPeriodChange}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-xs text-neutral-600 outline-none focus:border-neutral-400"
+            >
+              {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
             {hasFilters && (
               <button onClick={clearFilters} className="text-xs text-neutral-400 hover:text-neutral-700 underline">
                 Clear filters
@@ -218,6 +299,35 @@ const ChatConversationsTab = () => {
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
             </button>
           </div>
+
+          {/* Custom date range — shown only when "Custom Range" is selected */}
+          {period === 'custom' && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 sm:justify-end">
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || undefined}
+                onChange={(e) => { setCustomFrom(e.target.value); setPage(1); }}
+                className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+              />
+              <span className="text-xs text-neutral-400">→</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={(e) => { setCustomTo(e.target.value); setPage(1); }}
+                className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-neutral-400"
+              />
+              {(customFrom || customTo) && (
+                <button
+                  onClick={() => { setCustomFrom(''); setCustomTo(''); setPage(1); }}
+                  className="text-xs text-neutral-400 hover:text-neutral-700 underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {error && (
@@ -343,14 +453,14 @@ const ChatConversationsTab = () => {
                         <RowWalletSnapshot
                           userId={row.userId}
                           isHost={false}
-                          billed={(row.totalCoins ?? 0) + (row.gifts?.totalGiftCoins ?? 0)}
+                          billed={row.totalCoins ?? 0}
                         />
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 whitespace-nowrap">
                         <RowWalletSnapshot
                           userId={row.hostId}
                           isHost
-                          billed={(row.totalCash ?? 0) + (row.gifts?.totalGiftCash ?? 0)}
+                          billed={row.totalCash ?? 0}
                         />
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
