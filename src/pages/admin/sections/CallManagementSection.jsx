@@ -573,9 +573,35 @@ const CONFIG_FIELDS = [
   },
 ];
 
+// Intro-pack overrides — blank means "same as the normal value" (sent as null).
+const INTRO_CONFIG_FIELDS = [
+  {
+    key: 'introCoinsPerSecond',
+    label: 'Intro Coins / Second',
+    desc: 'Intro coins deducted per second while a call bills from the intro pack. Host earns no cash. Blank = same as Coins / Second',
+    unit: 'coins',
+    fallbackKey: 'coinsPerSecond',
+  },
+  {
+    key: 'introCashPerSecond',
+    label: 'Intro Cash / Second',
+    desc: 'Cash (₹) credited to host per second of an intro-pack call. Blank = 0 (host earns no cash on intro calls)',
+    unit: '₹',
+    fallbackValue: 0,
+  },
+  {
+    key: 'introMinimumCallCoins',
+    label: 'Intro Minimum Call Coins',
+    desc: 'Intro coins needed to start a call on the intro pack. Blank = same as Minimum Call Coins',
+    unit: 'coins',
+    fallbackKey: 'minimumCallCoins',
+  },
+];
+
 const EMPTY_CONFIG = {
   coinsPerSecond: '', cashPerSecond: '',
   minimumCallCoins: '', lowBalanceWarningSeconds: '',
+  introCoinsPerSecond: '', introMinimumCallCoins: '', introCashPerSecond: '',
 };
 
 const applyConfig = (cfg, setConfig, setForm) => {
@@ -585,8 +611,42 @@ const applyConfig = (cfg, setConfig, setForm) => {
     cashPerSecond:            cfg.cashPerSecond            ?? '',
     minimumCallCoins:         cfg.minimumCallCoins         ?? '',
     lowBalanceWarningSeconds: cfg.lowBalanceWarningSeconds ?? '',
+    introCoinsPerSecond:      cfg.introCoinsPerSecond      ?? '',
+    introMinimumCallCoins:    cfg.introMinimumCallCoins    ?? '',
+    introCashPerSecond:       cfg.introCashPerSecond       ?? '',
   });
 };
+
+const ConfigFieldGrid = ({ fields, form, setForm, config }) => (
+  <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    {fields.map(({ key, label, desc, unit, fallbackKey, fallbackValue }) => (
+      <div key={key} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+        <label className="block text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">
+          {label}
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            step="any"
+            min="0"
+            value={form[key] ?? ''}
+            placeholder={
+              fallbackValue != null ? `${fallbackValue} (default)`
+                : fallbackKey && config?.[fallbackKey] != null ? `${config[fallbackKey]} (default)`
+                : undefined
+            }
+            onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium outline-none focus:border-neutral-400"
+          />
+          <span className="flex-shrink-0 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs font-medium text-neutral-500">
+            {unit}
+          </span>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-neutral-400">{desc}</p>
+      </div>
+    ))}
+  </div>
+);
 
 const CallConfigTab = () => {
   const [config, setConfig]   = useState(null);
@@ -621,6 +681,11 @@ const CallConfigTab = () => {
       CONFIG_FIELDS.forEach(({ key }) => {
         const v = form[key];
         if (v !== '' && v != null) body[key] = Number(v);
+      });
+      // Blank intro field clears the override so the backend falls back to the normal value.
+      INTRO_CONFIG_FIELDS.forEach(({ key }) => {
+        const v = form[key];
+        body[key] = v === '' || v == null ? null : Number(v);
       });
       const { data } = await api.put('/api/admin/call-config', body);
       const updated = data?.data ?? data ?? {};
@@ -668,28 +733,20 @@ const CallConfigTab = () => {
         <div className="p-6 space-y-6">
 
           {/* Fields grid */}
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {CONFIG_FIELDS.map(({ key, label, desc, unit }) => (
-              <div key={key} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
-                <label className="block text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">
-                  {label}
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="any"
-                    min="0"
-                    value={form[key] ?? ''}
-                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium outline-none focus:border-neutral-400"
-                  />
-                  <span className="flex-shrink-0 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs font-medium text-neutral-500">
-                    {unit}
-                  </span>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-neutral-400">{desc}</p>
+          <ConfigFieldGrid fields={CONFIG_FIELDS} form={form} setForm={setForm} config={config} />
+
+          {/* Intro pack call config */}
+          <div className="space-y-4 border-t border-neutral-100 pt-6">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100">
+                <Gift size={14} className="text-amber-700" />
               </div>
-            ))}
+              <div>
+                <p className="text-sm font-semibold text-neutral-900">Intro Pack Call Rates</p>
+                <p className="text-xs text-neutral-400">Used while a call is billed from the user's intro coins. Leave blank to use the normal rates.</p>
+              </div>
+            </div>
+            <ConfigFieldGrid fields={INTRO_CONFIG_FIELDS} form={form} setForm={setForm} config={config} />
           </div>
 
           {/* Current live values summary */}
@@ -700,6 +757,12 @@ const CallConfigTab = () => {
                 {CONFIG_FIELDS.map(({ key, label, unit }) => (
                   <span key={key} className="rounded-full border border-neutral-100 bg-neutral-50 px-3 py-1 text-xs text-neutral-600">
                     <span className="font-medium">{label}:</span> {config[key] ?? '—'} {unit}
+                  </span>
+                ))}
+                {INTRO_CONFIG_FIELDS.map(({ key, label, unit, fallbackKey, fallbackValue }) => (
+                  <span key={key} className="rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs text-amber-800">
+                    <span className="font-medium">{label}:</span>{' '}
+                    {config[key] ?? `${fallbackValue ?? config[fallbackKey] ?? '—'} (default)`} {unit}
                   </span>
                 ))}
               </div>
