@@ -1362,8 +1362,8 @@ const PaymentHistoryCard = ({ userId }) => {
           </div>
           <div className="rounded-xl border border-neutral-200 bg-white p-3 sm:p-4">
             <p className="text-xs text-neutral-400 mb-1">Total Purchased</p>
-            <div className="flex items-center gap-1.5 text-green-700 font-bold text-lg">
-              <IndianRupee size={15} />{(wallet.totalPurchased ?? 0).toLocaleString()}
+            <div className="flex items-center gap-1.5 text-amber-600 font-bold text-lg">
+              <Coins size={15} />{(wallet.totalPurchased ?? 0).toLocaleString()}
             </div>
           </div>
           <div className="rounded-xl border border-neutral-200 bg-white p-3 sm:p-4">

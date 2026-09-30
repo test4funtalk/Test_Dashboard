@@ -29,6 +29,30 @@ const fmtDuration = (secs) => {
   return `${s}s`;
 };
 
+// Ring time from GET /api/admin/calls (call.ringDuration, seconds). A call
+// still ringing ticks live from createdAt so admins can watch it count up.
+const RingTimer = ({ call }) => {
+  const ringing = call.status === 'pending';
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!ringing) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [ringing]);
+
+  if (ringing && call.createdAt) {
+    const secs = Math.max(0, Math.floor((now - new Date(call.createdAt).getTime()) / 1000));
+    return (
+      <span className="inline-flex items-center gap-1.5 font-semibold text-amber-600">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+        {fmtDuration(secs)}
+      </span>
+    );
+  }
+  return <span>{fmtDuration(call.ringDuration)}</span>;
+};
+
 const CALL_STATUS_STYLES = {
   ended:     'bg-neutral-100 text-neutral-600',
   missed:    'bg-red-100 text-red-600',
@@ -93,8 +117,9 @@ const PERIOD_OPTIONS = [
 
 const SECTION_TABS = [
   { id: 'calls',  label: 'Calls',       Icon: PhoneCall },
-  { id: 'config', label: 'Call Config', Icon: Settings  },
-  { id: 'gifts',  label: 'Gift Config', Icon: Gift      },
+  { id: 'config',   label: 'Call Config',    Icon: Settings },
+  { id: 'schedule', label: 'Call Scheduler', Icon: Clock    },
+  { id: 'gifts',    label: 'Gift Config',    Icon: Gift     },
 ];
 
 // deterministic bar-height pattern for the barcode-style mini chart on KPI cards
@@ -162,6 +187,7 @@ const CallsTab = () => {
   const [total, setTotal] = useState(0);
   const [statusCounts, setStatusCounts] = useState({ pending: 0, active: 0, ended: 0, rejected: 0, missed: 0, cancelled: 0 });
   const [billingTypeCounts, setBillingTypeCounts] = useState({ intro: 0, billed: 0, mixed: 0, none: 0 });
+  const [ringStats, setRingStats] = useState(null);
 
   const [activeCallId, setActiveCallId] = useState(null);
 
@@ -188,6 +214,7 @@ const CallsTab = () => {
       setTotal(pagination.total ?? list.length);
       if (data?.statusCounts) setStatusCounts(data.statusCounts);
       if (data?.billingTypeCounts) setBillingTypeCounts(data.billingTypeCounts);
+      setRingStats(data?.ringStats ?? null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load calls');
     } finally {
@@ -249,6 +276,24 @@ const CallsTab = () => {
           trend="up"
           iconClass={BILLING_TYPE_STYLES.intro}
         />
+        {ringStats && (
+          <>
+            <KpiCard
+              label="Avg Ring · Answered"
+              value={fmtDuration(ringStats.answered.avgSeconds)}
+              pct={total > 0 ? Math.round((ringStats.answered.count / total) * 100) : 0}
+              Icon={Clock}
+              iconClass={CALL_STATUS_STYLES.active}
+            />
+            <KpiCard
+              label="Avg Ring · Unanswered"
+              value={fmtDuration(ringStats.unanswered.avgSeconds)}
+              pct={total > 0 ? Math.round((ringStats.unanswered.count / total) * 100) : 0}
+              Icon={PhoneMissed}
+              iconClass={CALL_STATUS_STYLES.missed}
+            />
+          </>
+        )}
       </div>
 
       {/* Main card */}
@@ -364,6 +409,7 @@ const CallsTab = () => {
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Status</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Billing</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Reason (Frontend)</th>
+                  <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Ringing</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Duration</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Coins Deducted</th>
                   <th className="border border-neutral-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">Cash Earned</th>
@@ -448,6 +494,9 @@ const CallsTab = () => {
                           ? <span className="truncate text-xs font-medium text-neutral-700" title={call.endReason}>{call.endReason}</span>
                           : <span className="text-xs italic text-neutral-300">Not provided</span>
                         }
+                      </td>
+                      <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
+                        <RingTimer call={call} />
                       </td>
                       <td className="border border-neutral-200 px-4 py-3 font-mono text-xs text-neutral-600 whitespace-nowrap">
                         {fmtDuration(call.duration)}
@@ -796,6 +845,276 @@ const CallConfigTab = () => {
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── call scheduler tab ───────────────────────────────────────────────────────
+
+// Same fields as the Call Config tab. Blank = keep the normal value during the
+// window (sent as null). Matches SCHEDULE_OVERRIDE_FIELDS in
+// Backend3/models/callConfigSchedule.model.js.
+const SCHEDULE_FIELDS = [...CONFIG_FIELDS, ...INTRO_CONFIG_FIELDS];
+
+const EMPTY_SCHEDULE_FORM = {
+  enabled: false,
+  startTime: '01:00',
+  endTime: '13:00',
+  overrides: Object.fromEntries(SCHEDULE_FIELDS.map(({ key }) => [key, ''])),
+};
+
+const scheduleToForm = (s) => ({
+  enabled:   Boolean(s?.enabled),
+  startTime: s?.startTime || '01:00',
+  endTime:   s?.endTime   || '13:00',
+  overrides: Object.fromEntries(SCHEDULE_FIELDS.map(({ key }) => [key, s?.overrides?.[key] ?? ''])),
+});
+
+const fmtTime12 = (hhmm) => {
+  if (!hhmm) return '—';
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+};
+
+const fmtIST = (d) =>
+  d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' IST' : '—';
+
+const CallScheduleTab = () => {
+  const [schedule, setSchedule] = useState(null);
+  const [baseConfig, setBaseConfig] = useState(null);
+  const [form, setForm]       = useState(EMPTY_SCHEDULE_FORM);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState(null);
+  const [saved, setSaved]     = useState(false);
+
+  const loadSchedule = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [schedRes, cfgRes] = await Promise.all([
+        api.get('/api/admin/call-config/schedule'),
+        api.get('/api/admin/call-config'),
+      ]);
+      const s = schedRes.data?.data ?? {};
+      setSchedule(s);
+      setForm(scheduleToForm(s));
+      setBaseConfig(cfgRes.data?.data ?? null);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to load schedule');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadSchedule(); }, [loadSchedule]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const overrides = {};
+      SCHEDULE_FIELDS.forEach(({ key }) => {
+        const v = form.overrides[key];
+        overrides[key] = v === '' || v == null ? null : Number(v);
+      });
+      const { data } = await api.put('/api/admin/call-config/schedule', {
+        enabled: form.enabled,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        overrides,
+      });
+      const s = data?.data ?? {};
+      setSchedule(s);
+      setForm(scheduleToForm(s));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3500);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to save schedule');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setOverride = (key, value) =>
+    setForm((f) => ({ ...f, overrides: { ...f.overrides, [key]: value } }));
+
+  const basePlaceholder = ({ key, fallbackKey, fallbackValue }) => {
+    const v = baseConfig?.[key] ?? fallbackValue ?? baseConfig?.[fallbackKey];
+    return v != null ? `${v} (no change)` : 'no change';
+  };
+
+  const effective = schedule?.effectiveConfig;
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white">
+      {/* Header */}
+      <div className="border-b border-neutral-100 px-6 py-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-900">
+              <Clock size={16} className="text-white" />
+            </div>
+            <div>
+              <p className="font-semibold text-neutral-900">Scheduled Call Config</p>
+              <p className="text-xs text-neutral-400">
+                Auto-switch call rates during a daily IST time window. Normal Call Config values return when the window ends.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={loadSchedule}
+            disabled={loading}
+            title="Refresh schedule"
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {loading && !schedule ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-neutral-400">
+          <Loader2 size={20} className="animate-spin" /> Loading schedule…
+        </div>
+      ) : (
+        <div className="p-6 space-y-6">
+
+          {/* Status banner */}
+          {schedule && (
+            <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm ${
+              schedule.isActiveNow
+                ? 'border-green-200 bg-green-50 text-green-700'
+                : 'border-neutral-200 bg-neutral-50 text-neutral-600'
+            }`}>
+              <span className="flex items-center gap-2 font-medium">
+                <span className={`h-2 w-2 rounded-full ${schedule.isActiveNow ? 'bg-green-500' : 'bg-neutral-400'}`} />
+                {!schedule.enabled
+                  ? 'Scheduler is off — normal Call Config applies all day'
+                  : schedule.isActiveNow
+                    ? `Scheduled rates ACTIVE now (${fmtTime12(schedule.startTime)} – ${fmtTime12(schedule.endTime)} IST)`
+                    : `Scheduled rates inactive — normal Call Config in effect`}
+              </span>
+              {schedule.enabled && schedule.nextTransitionAt && (
+                <span className="text-xs">
+                  {schedule.isActiveNow ? 'Ends' : 'Starts'} at {fmtIST(schedule.nextTransitionAt)}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Enable + window */}
+          <div className="grid gap-5 sm:grid-cols-3">
+            <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-500">Scheduler</label>
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, enabled: !f.enabled }))}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${form.enabled ? 'bg-neutral-900' : 'bg-neutral-300'}`}
+                aria-pressed={form.enabled}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${form.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+              <p className="mt-2 text-xs text-neutral-400">{form.enabled ? 'Enabled' : 'Disabled'}</p>
+            </div>
+            {[
+              { key: 'startTime', label: 'Start Time (IST)', desc: 'Scheduled rates begin at this time every day' },
+              { key: 'endTime',   label: 'End Time (IST)',   desc: 'Normal rates resume at this time. Earlier than start = runs past midnight' },
+            ].map(({ key, label, desc }) => (
+              <div key={key} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-500">{label}</label>
+                <input
+                  type="time"
+                  value={form[key]}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium outline-none focus:border-neutral-400"
+                />
+                <p className="mt-2 text-xs leading-relaxed text-neutral-400">{desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Override values */}
+          <div className="space-y-4 border-t border-neutral-100 pt-6">
+            <div>
+              <p className="text-sm font-semibold text-neutral-900">Values During Window</p>
+              <p className="text-xs text-neutral-400">Leave a field blank to keep its normal Call Config value.</p>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {SCHEDULE_FIELDS.map((field) => (
+                <div key={field.key} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    {field.label}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={form.overrides[field.key] ?? ''}
+                      placeholder={basePlaceholder(field)}
+                      onChange={(e) => setOverride(field.key, e.target.value)}
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium outline-none focus:border-neutral-400"
+                    />
+                    <span className="flex-shrink-0 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs font-medium text-neutral-500">
+                      {field.unit}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Effective values right now */}
+          {effective && (
+            <div className="rounded-xl border border-neutral-200 bg-white p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                Values In Effect Now {schedule?.isActiveNow ? '(scheduled)' : '(normal)'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {SCHEDULE_FIELDS.map(({ key, label, unit, fallbackKey, fallbackValue }) => (
+                  <span key={key} className="rounded-full border border-neutral-100 bg-neutral-50 px-3 py-1 text-xs text-neutral-600">
+                    <span className="font-medium">{label}:</span>{' '}
+                    {effective[key] ?? `${fallbackValue ?? effective[fallbackKey] ?? '—'} (default)`} {unit}
+                  </span>
+                ))}
+              </div>
+              {schedule?.updatedAt && (
+                <p className="mt-3 text-xs text-neutral-400">Last saved: {fmtDateTime(schedule.updatedAt)}</p>
+              )}
+            </div>
+          )}
+
+          {/* Feedback */}
+          {error && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <span className="flex items-center gap-2"><AlertCircle size={14} /> {error}</span>
+              <button onClick={loadSchedule} className="flex-shrink-0 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-red-50">
+                Retry
+              </button>
+            </div>
+          )}
+          {saved && (
+            <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              <CheckCircle size={14} /> Schedule saved. Applies to new calls within 5 minutes; calls already in progress keep their rates.
+            </div>
+          )}
+
+          {/* Save button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {saving ? 'Saving…' : 'Save Schedule'}
             </button>
           </div>
         </div>
@@ -1304,7 +1623,7 @@ const GiftConfigTab = () => {
 
 // ─── main section ─────────────────────────────────────────────────────────────
 
-const VALID_CTABS = new Set(['calls', 'config', 'gifts']);
+const VALID_CTABS = new Set(['calls', 'config', 'schedule', 'gifts']);
 
 const CallManagementSection = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1340,8 +1659,9 @@ const CallManagementSection = () => {
       </div>
 
       {activeTab === 'calls'  && <CallsTab />}
-      {activeTab === 'config' && <CallConfigTab />}
-      {activeTab === 'gifts'  && <GiftConfigTab />}
+      {activeTab === 'config'   && <CallConfigTab />}
+      {activeTab === 'schedule' && <CallScheduleTab />}
+      {activeTab === 'gifts'    && <GiftConfigTab />}
     </div>
   );
 };

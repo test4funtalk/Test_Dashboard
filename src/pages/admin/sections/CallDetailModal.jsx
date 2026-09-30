@@ -187,7 +187,8 @@ const CallDetailModal = ({ callId, onClose }) => {
             </div>
 
             {/* Stat tiles */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <StatTile icon={Clock}    label="Ringing"    value={fmtDuration(call.ringDuration)} />
               <StatTile icon={Clock}    label="Duration"   value={fmtDuration(call.duration)} />
               <StatTile icon={Calendar} label="Started"    value={fmtDateTime(call.startedAt)} />
               <StatTile icon={Calendar} label="Ended"      value={fmtDateTime(call.endedAt)} />
